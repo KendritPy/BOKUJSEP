@@ -17,6 +17,7 @@ enum BokuLanguage {
 
 static volatile int g_running = 1;
 static volatile enum BokuLanguage g_language = BOKU_LANG_ES;
+static SceUID g_input_thread = -1;
 
 static void LogLine(const char *text)
 {
@@ -75,8 +76,8 @@ static int InputThread(SceSize args, void *argp)
     unsigned int previous = 0;
     (void)args;
     (void)argp;
-    sceCtrlSetSamplingCycle(0);
-    sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
+
+    /* Peek only. Do not change the game's controller sampling mode/cycle. */
     while (g_running) {
         unsigned int current;
         memset(&pad, 0, sizeof(pad));
@@ -85,7 +86,7 @@ static int InputThread(SceSize args, void *argp)
         if (current && !previous)
             ToggleLanguage();
         previous = current;
-        sceKernelDelayThread(8000);
+        sceKernelDelayThread(16000);
     }
     sceKernelExitDeleteThread(0);
     return 0;
@@ -93,9 +94,11 @@ static int InputThread(SceSize args, void *argp)
 
 int module_start(SceSize args, void *argp)
 {
-    SceUID thread;
+    int result;
     (void)args;
     (void)argp;
+
+    g_running = 1;
     LogLine("[BokuLang] Plugin loaded");
     LogLine("[BokuLang] Game UCJS10038 selected by plugin.ini");
     LoadConfiguration();
@@ -103,13 +106,31 @@ int module_start(SceSize args, void *argp)
         ? "[BokuLang] initial language JP"
         : "[BokuLang] initial language ES");
     LogLine("[BokuLang] milestone-zero build: dialogue hook disabled safely");
-    thread = sceKernelCreateThread("BokuLangInput", InputThread, 0x18, 0x2000, PSP_THREAD_ATTR_USER, NULL);
-    if (thread >= 0) {
-        sceKernelStartThread(thread, 0, NULL);
-        LogLine("[BokuLang] input thread active; guest Note toggles language");
-    } else {
+
+    g_input_thread = sceKernelCreateThread(
+        "BokuLangInput", InputThread, 0x30, 0x2000, PSP_THREAD_ATTR_USER, NULL);
+    if (g_input_thread < 0) {
         LogLine("[BokuLang] ERROR input thread creation failed");
+        return 0;
     }
+
+    result = sceKernelStartThread(g_input_thread, 0, NULL);
+    if (result < 0) {
+        LogLine("[BokuLang] ERROR input thread start failed");
+        sceKernelDeleteThread(g_input_thread);
+        g_input_thread = -1;
+        return 0;
+    }
+
+    LogLine("[BokuLang] input thread active; guest Note toggles language");
     return 0;
 }
 
+int module_stop(SceSize args, void *argp)
+{
+    (void)args;
+    (void)argp;
+    g_running = 0;
+    LogLine("[BokuLang] Plugin stopping");
+    return 0;
+}
