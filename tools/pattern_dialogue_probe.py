@@ -138,10 +138,20 @@ def format_char(char: str) -> str:
 def equality_search(ram: bytes, text: str, symbol_bytes: int, limit: int = 32) -> list[dict[str, Any]]:
     pattern, name_to_char = equality_regex(text, symbol_bytes)
     hits: list[dict[str, Any]] = []
-    for match in pattern.finditer(ram):
-        # A 16-bit glyph stream should be word aligned in PSP RAM.
-        if symbol_bytes == 2 and ((RAM_BASE + match.start()) & 1):
+    cursor = 0
+    while cursor < len(ram) and len(hits) < limit:
+        match = pattern.search(ram, cursor)
+        if match is None:
+            break
+
+        address = RAM_BASE + match.start()
+        # A 16-bit glyph stream should be word aligned in PSP RAM. Advance by
+        # one byte after a rejected shifted match so an overlapping aligned
+        # candidate at the next byte is still considered.
+        if symbol_bytes == 2 and (address & 1):
+            cursor = match.start() + 1
             continue
+
         mapping: dict[str, str] = {}
         for name, char in name_to_char.items():
             value = match.group(name)
@@ -151,14 +161,13 @@ def equality_search(ram: bytes, text: str, symbol_bytes: int, limit: int = 32) -
             else:
                 mapping[format_char(char)] = f"0x{value[0]:02X}"
         hits.append({
-            "address": f"0x{RAM_BASE + match.start():08X}",
+            "address": f"0x{address:08X}",
             "symbol_bytes": symbol_bytes,
             "byte_length": match.end() - match.start(),
             "mapping": mapping,
             "raw_hex": match.group(0).hex().upper(),
         })
-        if len(hits) >= limit:
-            break
+        cursor = match.start() + 1
     return hits
 
 
