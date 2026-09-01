@@ -2,7 +2,8 @@ param(
     [string]$Iso = '',
     [int]$DebuggerPort = 8765,
     [ValidateSet('F5', 'F6', 'F7')]
-    [string]$Hotkey = 'F7'
+    [string]$Hotkey = 'F7',
+    [switch]$Interpreter
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -12,8 +13,19 @@ $exe = Join-Path $root 'external/ppsspp-bin/portable/PPSSPPWindows64.exe'
 $memstick = Join-Path $root 'external/ppsspp-bin/portable/memstick'
 & (Join-Path $PSScriptRoot 'deploy.ps1') -Memstick $memstick
 & (Join-Path $PSScriptRoot 'configure-ppsspp.ps1') -Memstick $memstick -DebuggerPort $DebuggerPort
-Start-Process -FilePath $exe -ArgumentList @("`"$Iso`"")
+
+$ppssppArgs = [Collections.Generic.List[string]]::new()
+if ($Interpreter) {
+    # PPSSPP's interpreter is far slower than JIT, but memory breakpoints and
+    # register state are substantially more reliable for reverse engineering.
+    $ppssppArgs.Add('--cpu=interpreter')
+}
+$ppssppArgs.Add("`"$Iso`"")
+Start-Process -FilePath $exe -ArgumentList $ppssppArgs
 Write-Host "PPSSPP started; waiting for debugger port $DebuggerPort..."
+if ($Interpreter) {
+    Write-Host 'CPU backend forced to interpreter for reliable memchecks/register state.'
+}
 $deadline = [DateTime]::UtcNow.AddSeconds(20)
 $ready = $false
 do {
