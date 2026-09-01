@@ -30,8 +30,17 @@ EBOOT changes add horizontal dialogue and several subtitle systems. Therefore
 the Spanish EBOOT is the initial runtime base; Japanese mode must restore
 original Japanese content without discarding those useful renderer changes.
 
+## Runtime investigation (2026-08-31)
+
+- Exact visible Spanish dialogue was not found in PSP RAM as literal UTF-8, Latin-1, UTF-16, or as a simple unknown fixed-width 8-bit/16-bit equality-pattern stream.
+- A first two-sample RAM differential misleadingly concentrated line-transition changes around `0x0892EBDC-0x0892EC33`.
+- A change watchpoint on `0x0892EC00-0x0892EC33` fired only ~0.00033 s after arming, before the user advanced dialogue.
+- The hit PC was `0x0882AC2C`; the backtrace includes a call to `sceKernelGetSystemTimeLow`, and the watched region consists largely of repeated small 16-bit pairs. This is consistent with time-driven render/geometry state, not a current-dialogue identity structure.
+- Therefore `0x0892EC00` is a **rejected dialogue candidate**. Do not use it as a text hook target without new evidence.
+- The first differential probe used only one same-line noise interval and was vulnerable to periodic-state aliasing. `dialogue_stable_diff_probe.py` now samples each textbox repeatedly at irregular intervals before classifying line-specific changes.
+- JIT memcheck register snapshots contained many `0xDEADBEEF` values. Future memory-breakpoint work should use PPSSPP interpreter mode (`launch-debug.bat`) for reliable registers/memchecks.
+
 ## Pending measured results
 
 Input hashes, detected IDs, per-file diffs, font coverage, decrypted EBOOT
-hashes, and runtime addresses will be appended by the pipeline/debugging tools
-after `input/jp/Boku_JP.iso` is available.
+hashes, and verified runtime text/parser addresses will be appended by the pipeline/debugging tools as evidence is collected.
