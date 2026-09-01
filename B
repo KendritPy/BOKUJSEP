@@ -1,0 +1,1 @@
+Fresh A- capture changed it from 0x0063 to 0x01C0.
