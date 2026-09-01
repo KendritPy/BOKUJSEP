@@ -6,7 +6,7 @@ the GriffithVIII/TraduSquare Spanish v1.0 patched ISO so its horizontal text,
 VWF, layout improvements, graphics, and added subtitle support remain intact.
 
 This repository never modifies an input ISO in place. Generated game data and
-copyrighted assets stay under ignored local directories.
+copyrighted assets stay under ignored local directories. 
 
 ## Current development baseline
 
