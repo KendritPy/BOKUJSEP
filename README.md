@@ -10,7 +10,11 @@ the audited source revisions, current runtime boundary, rejected leads, exact
 next experiment, and which facts remain unknown. The static format and public
 translation-tool lineage are documented separately in
 [docs/boku-dialogue-format.md](docs/boku-dialogue-format.md) and
-[docs/spanish-patch-archaeology.md](docs/spanish-patch-archaeology.md).
+[docs/spanish-patch-archaeology.md](docs/spanish-patch-archaeology.md). The
+last-pass adoption survey for live hook tools is
+[docs/runtime-tool-survey.md](docs/runtime-tool-survey.md); its recommendation
+is LunaTranslator for discovery, followed by the existing PSPModBase PRX for
+the shipped toggle.
 
 This repository never modifies an input ISO in place. Generated game data and
 copyrighted assets stay under ignored local directories. 

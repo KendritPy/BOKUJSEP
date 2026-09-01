@@ -82,8 +82,24 @@ yet. See [findings.md](findings.md) and [addresses.md](addresses.md).
 
 ## Exact next experiment
 
-This is the highest-value next action and requires the user's Windows PPSSPP
-session and early-dialogue save:
+The easiest high-value first pass is now LunaTranslator/LunaHook. It can search
+PPSSPP guest hooks directly and may expose the parser call faster than a manual
+write-watch trace:
+
+1. Attach current LunaTranslator to PPSSPP 1.20.4 at the early-dialogue save.
+2. Search while advancing exactly one textbox and record any stable guest hook
+   code, PC/address, register/offset, encoding, and two raw line samples.
+3. Cross-check that address with this repository's WebSocket debugger before
+   accepting it. Luna is a discovery tool, not a proven in-game write-back
+   solution.
+
+See [runtime-tool-survey.md](runtime-tool-survey.md) for the ranked tools,
+licenses, forum evidence, and exact adoption boundary. No public `UCJS10038`
+hook or script was found.
+
+If Luna yields only OCR/glyph output or no useful hook, continue the existing
+authoritative trace, which requires the user's Windows PPSSPP session and
+early-dialogue save:
 
 1. Run `launch-debug.bat`; confirm the interpreter build starts.
 2. Put a fully rendered textbox on screen.
@@ -142,6 +158,8 @@ screenshots or the old Pleonex table.
   control-word, font, and rebuild facts.
 - [spanish-patch-archaeology.md](spanish-patch-archaeology.md): public lineage,
   artifacts, claims, limitations, and excluded lookalike projects.
+- [runtime-tool-survey.md](runtime-tool-survey.md): ranked dynamic-hook tools,
+  licensing boundaries, forum evidence, and the Luna-first experiment.
 - [test-matrix.md](test-matrix.md): end-to-end acceptance coverage.
 
 ## Do not repeat these mistakes
@@ -156,4 +174,6 @@ screenshots or the old Pleonex table.
 - Do not stop blindly at every `0x0000`; it can be a segment/page guard.
 - Do not relocate inner dialogue-pack members to make longer text fit.
 - Do not claim the public Spanish repository contains its build source.
-
+- Do not copy the public 0xDC00 Agent host: its audited repository has no
+  license. Its separate PSP scripts repository is MIT.
+- Do not treat Luna extraction/overlay as proof of PSP in-game write-back.
