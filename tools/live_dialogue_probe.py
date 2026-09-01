@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import struct
+import unicodedata
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -15,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 RAM_BASE = 0x08000000
 RAM_SIZE = 0x02000000
 CHUNK_SIZE = 0x00100000
+CONTROL_WORDS = {0x0000, 0x8000, 0x8001, 0x8002, 0xFFFF}
+TOKEN_RE = re.compile(r"\{[^}]*\}")
 
 
 def load_records(path: Path) -> list[dict[str, Any]]:
@@ -42,17 +46,65 @@ def raw_bytes(record: dict[str, Any]) -> bytes:
         return b""
 
 
-def useful_anchor(raw: bytes, minimum: int = 8, maximum: int = 16) -> bytes:
-    """Return a short exact byte anchor, trimming common trailing terminators.
-
-    We intentionally keep this format-agnostic: this is a RAM locator, not a
-    decoder. Full raw equality is checked separately when possible.
-    """
-    while len(raw) >= 2 and raw[-2:] in (b"\x00\x00", b"\xff\xff"):
+def trim_raw(raw: bytes) -> bytes:
+    while len(raw) >= 2 and raw[-2:] in (b"\x00\x00", b"\xff\xff", b"\x00\x80"):
         raw = raw[:-2]
-    if len(raw) < minimum:
+    return raw[: len(raw) // 2 * 2]
+
+
+def words(raw: bytes) -> list[int]:
+    clean = trim_raw(raw)
+    return [value for (value,) in struct.iter_unpack("<H", clean)]
+
+
+def best_anchor(raw: bytes, preferred_words: int = 6) -> bytes:
+    """Pick a text-heavy interior window instead of blindly using the prefix."""
+    values = words(raw)
+    if len(values) < 4:
         return b""
-    return raw[: min(maximum, len(raw))]
+    width = min(preferred_words, len(values))
+    best: tuple[tuple[int, int, int, int], int] | None = None
+    for start in range(0, len(values) - width + 1):
+        window = values[start:start + width]
+        controls = sum(value in CONTROL_WORDS for value in window)
+        text_words = width - controls
+        distinct = len(set(value for value in window if value not in CONTROL_WORDS))
+        score = (text_words, distinct, -controls, -start)
+        if best is None or score > best[0]:
+            best = (score, start)
+    if best is None or best[0][0] < 4:
+        return b""
+    start = best[1] * 2
+    return trim_raw(raw)[start:start + width * 2]
+
+
+def candidate_windows(raw: bytes, width_words: int = 4) -> list[tuple[int, bytes]]:
+    """All text-like aligned windows for one targeted extracted record."""
+    values = words(raw)
+    if len(values) < width_words:
+        return []
+    clean = trim_raw(raw)
+    result: list[tuple[int, bytes]] = []
+    seen: set[bytes] = set()
+    for start in range(0, len(values) - width_words + 1):
+        window_words = values[start:start + width_words]
+        if any(value in CONTROL_WORDS for value in window_words):
+            continue
+        if len(set(window_words)) < 2:
+            continue
+        window = clean[start * 2:(start + width_words) * 2]
+        if window in seen:
+            continue
+        seen.add(window)
+        result.append((start * 2, window))
+    return result
+
+
+def normalize_text(value: str) -> str:
+    value = TOKEN_RE.sub(" ", value or "")
+    value = unicodedata.normalize("NFKC", value)
+    value = value.replace("\r", " ").replace("\n", " ")
+    return " ".join(value.split()).casefold()
 
 
 def record_label(record: dict[str, Any]) -> str:
@@ -64,9 +116,53 @@ def record_label(record: dict[str, Any]) -> str:
     return " ".join(fields)
 
 
+def find_all(haystack: bytes, needle: bytes, limit: int = 64) -> list[int]:
+    if not needle:
+        return []
+    result = []
+    start = 0
+    while len(result) < limit:
+        found = haystack.find(needle, start)
+        if found < 0:
+            break
+        result.append(RAM_BASE + found)
+        start = found + 1
+    return result
+
+
+def literal_searches(ram: bytes, text: str) -> list[dict[str, Any]]:
+    results = []
+    for encoding in ("utf-8", "latin-1", "utf-16le", "utf-16be"):
+        try:
+            payload = text.encode(encoding)
+        except UnicodeEncodeError:
+            continue
+        hits = find_all(ram, payload)
+        results.append({
+            "encoding": encoding,
+            "bytes": payload.hex().upper(),
+            "hits": [f"0x{address:08X}" for address in hits],
+        })
+    return results
+
+
+def targeted_record_hits(ram: bytes, raw: bytes) -> list[dict[str, Any]]:
+    hits = []
+    for offset, window in candidate_windows(raw):
+        addresses = find_all(ram, window, limit=16)
+        if not addresses:
+            continue
+        hits.append({
+            "raw_offset": offset,
+            "window": window.hex().upper(),
+            "addresses": [f"0x{address:08X}" for address in addresses],
+        })
+    return hits
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Read PPSSPP RAM once and identify extracted ES dialogue records resident in memory."
+        description="Read PPSSPP RAM and locate the live Spanish dialogue representation."
     )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
@@ -76,7 +172,12 @@ def main() -> None:
         default=ROOT / "data" / "es" / "dialogue.json",
         help="extracted dialogue JSON to match (default: ES)",
     )
-    parser.add_argument("--limit", type=int, default=30, help="maximum reported matches")
+    parser.add_argument(
+        "--text",
+        default="La cena que he preparado hoy era",
+        help="visible text fragment used to identify the canonical extracted record",
+    )
+    parser.add_argument("--limit", type=int, default=30, help="maximum general resident matches")
     parser.add_argument("--json", type=Path, help="optional JSON report path")
     args = parser.parse_args()
 
@@ -84,17 +185,22 @@ def main() -> None:
         raise SystemExit(f"missing {args.dialogue}; run scripts/pipeline.ps1 first")
 
     records = load_records(args.dialogue)
+    raws = [raw_bytes(record) for record in records]
+
+    query = normalize_text(args.text)
+    text_candidates = []
+    if query:
+        for index, record in enumerate(records):
+            decoded = normalize_text(str(record.get("text") or ""))
+            if query in decoded:
+                text_candidates.append(index)
+
     anchor_records: dict[bytes, list[int]] = defaultdict(list)
-    raws: list[bytes] = []
-    for index, record in enumerate(records):
-        raw = raw_bytes(record)
-        raws.append(raw)
-        anchor = useful_anchor(raw)
+    for index, raw in enumerate(raws):
+        anchor = best_anchor(raw)
         if anchor:
             anchor_records[anchor].append(index)
 
-    # Longer alternatives first prevents a short prefix from shadowing a
-    # longer one in Python's leftmost-first regex engine.
     anchors = sorted(anchor_records, key=lambda value: (-len(value), value))
     if not anchors:
         raise SystemExit("no usable dialogue anchors were found")
@@ -103,10 +209,44 @@ def main() -> None:
     debugger = PPSSPPDebugger(args.host, args.port, timeout=10.0)
     try:
         status = debugger.request("game.status")
-        print(f"game.status: {status.get('game', status.get('title', status.get('event', 'connected')))}")
+        print(f"game.status: {status}")
         ram = read_ram(debugger)
     finally:
         debugger.close()
+
+    literal = literal_searches(ram, args.text)
+    if any(item["hits"] for item in literal):
+        print("Literal text representation found in RAM:")
+        for item in literal:
+            if item["hits"]:
+                print(f"  {item['encoding']}: {', '.join(item['hits'])}")
+    else:
+        print("No literal UTF-8/Latin-1/UTF-16 copy of the visible phrase was found.")
+
+    print(f"Offline text query: {args.text!r}")
+    print(f"Matching extracted records after NFKC normalization: {len(text_candidates)}")
+    targeted = []
+    for index in text_candidates[:20]:
+        record = records[index]
+        raw = raws[index]
+        window_hits = targeted_record_hits(ram, raw)
+        item = {
+            "record_index": index,
+            "label": record_label(record),
+            "text": record.get("text"),
+            "raw_hex": raw.hex().upper(),
+            "raw_bytes": len(raw),
+            "window_hits": window_hits,
+        }
+        targeted.append(item)
+        print(f"  record {index}: {record_label(record)} raw={len(raw)}B")
+        if record.get("text"):
+            print(f"    decoded: {record.get('text')}")
+        if window_hits:
+            count = sum(len(hit["addresses"]) for hit in window_hits)
+            print(f"    RAM interior-window hits: {count}")
+        else:
+            print("    RAM interior-window hits: 0")
 
     matches: list[dict[str, Any]] = []
     seen: set[tuple[int, int]] = set()
@@ -119,11 +259,9 @@ def main() -> None:
                 continue
             seen.add(key)
             raw = raws[index]
-            exact = bool(raw) and ram[hit.start() : hit.start() + len(raw)] == raw
             record = records[index]
             matches.append({
                 "address": f"0x{address:08X}",
-                "exact_full_raw": exact,
                 "anchor_bytes": len(anchor),
                 "raw_bytes": len(raw),
                 "record_index": index,
@@ -137,34 +275,31 @@ def main() -> None:
                 "text": record.get("text"),
             })
 
-    # Exact full records are strongest, then longer records/anchors. Resident
-    # script archives may produce many weak matches; the visible line should
-    # normally be among the strongest candidates, not blindly assumed #1.
     matches.sort(key=lambda item: (
-        not item["exact_full_raw"],
         -int(item["raw_bytes"]),
         -int(item["anchor_bytes"]),
         item["address"],
     ))
-
     shown = matches[: max(0, args.limit)]
+
     if not shown:
-        print("No extracted dialogue anchors were found in PSP RAM.")
-        print("That is useful evidence: the active renderer may use a transformed/copied representation.")
+        print("No best-interior anchors from the extracted dialogue database were found in PSP RAM.")
     else:
-        print(f"Found {len(matches)} resident dialogue candidates; showing {len(shown)} strongest:\n")
+        print(f"Found {len(matches)} general resident dialogue candidates; showing {len(shown)} strongest:")
         for number, item in enumerate(shown, 1):
-            strength = "FULL" if item["exact_full_raw"] else f"anchor {item['anchor_bytes']}B"
-            print(f"[{number:02d}] {item['address']} {strength} raw={item['raw_bytes']}B")
-            record = records[item["record_index"]]
-            print(f"     {record_label(record)}")
-            text = item.get("text")
-            if text:
-                print(f"     {text}")
+            print(f"[{number:02d}] {item['address']} anchor={item['anchor_bytes']}B raw={item['raw_bytes']}B")
+            print(f"     {record_label(records[item['record_index']])}")
+            if item.get("text"):
+                print(f"     {item['text']}")
 
     report = {
         "dialogue": str(args.dialogue),
         "records": len(records),
+        "query_text": args.text,
+        "normalized_query": query,
+        "text_candidate_count": len(text_candidates),
+        "text_candidates": targeted,
+        "literal_searches": literal,
         "unique_anchors": len(anchors),
         "matches_total": len(matches),
         "matches": shown,
