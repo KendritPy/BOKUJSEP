@@ -13,10 +13,12 @@
 /logs/
 __pycache__/
 *.pyc
+*.o
+*.elf
+*.prx
 *.iso
 *.cso
 *.chd
 *.rar
 *.xdelta
 *.xdelta3
-
