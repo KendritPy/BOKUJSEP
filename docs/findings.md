@@ -38,6 +38,9 @@ original Japanese content without discarding those useful renderer changes.
 - The hit PC was `0x0882AC2C`; the backtrace includes a call to `sceKernelGetSystemTimeLow`, and the watched region consists largely of repeated small 16-bit pairs. This is consistent with time-driven render/geometry state, not a current-dialogue identity structure.
 - Therefore `0x0892EC00` is a **rejected dialogue candidate**. Do not use it as a text hook target without new evidence.
 - The first differential probe used only one same-line noise interval and was vulnerable to periodic-state aliasing. `dialogue_stable_diff_probe.py` now samples each textbox repeatedly at irregular intervals before classifying line-specific changes.
+- A later multi-sample differential ranked `0x0881C600` highly, but the selected word `0x0881C62C` currently contains bytes `F0 FF BD 27`, i.e. little-endian MIPS `0x27BDFFF0` / `addiu sp,sp,-0x10`, a normal function prologue. A real memory-breakpoint broadcast then timed out after the textbox was advanced. Treat this region as **executable code, not dialogue state**, unless future module/function mapping proves otherwise.
+- Differential candidates must now be classified against PPSSPP's `hle.func.list` / module map before any watchpoint is armed. `classify_diff_candidates.py` performs this gate on the existing stable-diff report.
+- The original watch scripts also incorrectly inferred a breakpoint hit from `cpu.status.stepping`. PPSSPP exposes the actual reason through the unsolicited `cpu.breakpoint.hit` broadcast; `dialogue_watch_event_probe.py` now waits for that real event and ignores unrelated stepping states.
 - JIT memcheck register snapshots contained many `0xDEADBEEF` values. Future memory-breakpoint work should use PPSSPP interpreter mode (`launch-debug.bat`) for reliable registers/memchecks.
 
 ## Pending measured results
