@@ -1,62 +1,67 @@
 # Fresh-context handoff
 
-Read this file first. It is the canonical state of the Japanese/Spanish runtime
-toggle project as of **2026-09-01**. The detailed evidence lives in the linked
-documents; do not reconstruct the project from chat history.
+Read this first. It is the compact current state of **BokuLangToggle**. Detailed
+evidence is in the linked docs; do not reconstruct old assumptions from chat
+history.
 
-## Goal and non-negotiable constraints
+## Goal
 
 Build a PPSSPP-compatible userspace PRX for **Boku no Natsuyasumi Portable**
-(`UCJS10038`) that switches dialogue between the original Japanese and the
-TraduSquare/GriffithVIII Spanish v1.0 translation at runtime.
+(`UCJS10038`) that switches between the original Japanese and the curated
+TraduSquare/GriffithVIII Spanish v1.0 translation at runtime, ideally redrawing
+the current textbox immediately without advancing, restarting, or changing
+saves.
 
-- Use the Spanish v1.0 executable as the runtime base so its horizontal text,
-  VWF, expanded layouts, graphics, and new subtitle paths remain available.
-- Never modify an input ISO in place or commit copyrighted game data.
-- Do not install an address-based hook without an edition-specific byte
-  signature and runtime evidence. Fail closed on a mismatch.
-- Prefer a structural dialogue identity and whole raw 16-bit streams. A glyph
-  hook is a last resort.
-- The current PRX is intentionally only a loader and Note-button edge detector.
+Use the **Spanish v1.0 executable as the runtime base** unless strong evidence
+shows a better architecture. It already contains the useful horizontal-text,
+VWF, widened-layout, graphics, and added-subtitle work. The intended final path
+is still: structural JP/ES data -> verified parser/lookup hook -> existing
+PSPModBase PRX. Do not fork PPSSPP unless the PRX route is actually blocked.
 
-## Audited public snapshots
+**Interaction rule:** if progress requires playing the game, changing a
+textbox, pressing a game control, loading a save/state, or visually checking
+PPSSPP, ask the user for that exact action, then **stop and wait** for the user
+to return the log/JSON/screenshot/result. Do not try to simulate or repeatedly
+"play" the game yourself; that tends to create loops and bad assumptions.
 
-Fresh setup is reproducible because `scripts/bootstrap.ps1` pins these refs.
-Existing external checkouts are preserved and produce a warning if they differ.
+## Audited baseline
 
-| Source | Audited ref | What it establishes |
+| Source | Pinned/audited ref | Use |
 |---|---|---|
-| [Spanish release](https://github.com/GriffithVIII/Boku-no-Natsuyasumi-ESP) | tag `v1.0` -> `c0e3d2d5417013e4f4b34e416b58743f7efd86ad` | Release claims, credits, screenshots, and patch archive; no source/tooling |
-| [Korean project](https://github.com/snake7594/boku-natsu-portable-kr-patch) | tag `v0.1.3-image-kr` / `97d0b30391ccfd44764863b1873f7d0a68246c96` | Current extract/rebuild/font/image tooling and empirical stability reports |
-| [Pleonex + GriffithVIII](https://github.com/pleonex/Boku-no-Natsuyasumi) | `dae1215b13ca7dbc6fa17971ecd3d58de86b097a` | 2021 Yarhl/PO rewrite plus GriffithVIII's extended table and second font sheet |
-| [PPSSPP](https://github.com/hrydgard/ppsspp/tree/v1.20.4) | tag `v1.20.4` -> `fa50bb1976065c4f8b1b47af227d367fe9771555` | Exact source for the binary and WebSocket behavior under test |
+| Spanish release | `v1.0` -> `c0e3d2d5417013e4f4b34e416b58743f7efd86ad` | Runtime base/release claims; public repo has no build source |
+| Korean project | `v0.1.3-image-kr` / `97d0b30391ccfd44764863b1873f7d0a68246c96` | Best public extract/rebuild/font/fixed-slot evidence |
+| Pleonex + GriffithVIII | `dae1215b13ca7dbc6fa17971ecd3d58de86b097a` | Yarhl/PO rewrite + GriffithVIII extended table + second font sheet |
+| PPSSPP | `v1.20.4` -> `fa50bb1976065c4f8b1b47af227d367fe9771555` | Exact debugger/runtime semantics |
 
-Important lineage detail: Pleonex's default `master` stops at
-`c88677d5709338fe1adf0fe61bb9dd43404e55ac` (2015). The public
-`feature/yarhl` branch ends at `1b4166bf628d36af36def2fa85552402c6ebe09a`.
-GriffithVIII then added the tested extended table (`dbf1d2f...`) and second
-font sheet (`dae1215...`). Those two commits are public and fetchable by SHA,
-but no current branch names them. Cloning the default branch alone misses all
-three improvements.
+Do not substitute newer PPSSPP `master` behavior for 1.20.4. Do not clone only
+Pleonex `master`: it misses the useful 2021/GriffithVIII work.
 
-## What is implemented and verified
+## Already solved / do not redo
 
-- `tools/ppsspp_debug.py` is the only WebSocket transport. It preserves
-  interleaved broadcasts/tickets, restores timeouts, uses raw
-  `memory.read(replacements=false)`, and falls back to local chunked search on
-  1.20.4.
-- `tools/dialogue_watch_event_probe.py` recognizes the exact 1.20.4 memcheck
-  notification: `cpu.stepping`, `reason=memory.breakpoint`, and
-  `relatedAddress=<watch start>`. It also accepts the newer enriched form.
-- Watchpoints use `write=true, change=true`, verify the installed entry via
-  `memory.breakpoint.list`, and capture evidence before resuming.
-- Debug launch uses PPSSPP 1.20.4's supported interpreter flag, `-i`.
-- The host F7 bridge presses the otherwise-unused PSP Note button; the PRX
-  edge-detects it and toggles its internal state exactly once.
-- Unit tests cover transport interleaving, queue preservation, timeout
-  restoration, raw reads, and both stepping-event payloads.
+- Exact PPSSPP 1.20.4 debugger audit is complete. See
+  [ppsspp-1.20.4-debugger.md](ppsspp-1.20.4-debugger.md).
+- `tools/ppsspp_debug.py` is the unified transport: it preserves interleaved
+  broadcasts/tickets, restores socket timeouts, and defaults raw reads to
+  `memory.read(replacements=false)`.
+- PPSSPP 1.20.4 memcheck stops are **`cpu.stepping` broadcasts**, not
+  `cpu.breakpoint.hit`. Match `reason="memory.breakpoint"` and
+  `relatedAddress=<watch start>`.
+- A valid write-on-change memcheck needs `write=true, change=true`.
+- Interpreter launch for 1.20.4 is `-i`, not `--cpu=interpreter`.
+- Broadcast configuration is `broadcast.config.set`, not `client.config.set`.
+- Unit tests exist for debugger message interleaving/raw reads and both old/new
+  stepping payloads.
+- Static archive/dialogue/font-format audit is complete. See
+  [boku-dialogue-format.md](boku-dialogue-format.md).
+- Public Spanish-patch/tool archaeology is complete. The official Spanish repo
+  and release do **not** expose its translation DB, assembly patches, build
+  scripts, or EBOOT map. Public GriffithVIII/Pleonex lineage was recovered and
+  documented in [spanish-patch-archaeology.md](spanish-patch-archaeology.md).
+- Broad runtime-tool research is complete. Do not repeat another generic tool
+  search before obtaining new runtime evidence. See
+  [runtime-tool-survey.md](runtime-tool-survey.md).
 
-Verification command:
+Verification after code changes:
 
 ```bash
 python -m unittest discover -s tests -v
@@ -64,116 +69,138 @@ python -m py_compile tools/ppsspp_debug.py tools/dialogue_watch_event_probe.py
 git diff --check
 ```
 
-## Runtime evidence and current boundary
+## Static data facts that matter
 
-The earlier `0x0881Cxxx` candidates were PPSSPP replacement/emuhack views, not
-self-modifying game code. A corrected 32 MiB stable differential using
-`replacements=false` left 12 clean line-specific bytes and no changed RAM
-pointers.
-
-The strongest surviving line-dependent value is the halfword at `0x0892EBA4`:
-it was stable within repeated samples of each textbox and changed from `0x0063`
-to `0x01C0` between two textboxes. Its surrounding repeated small halfwords
-look like renderer/layout output, not a durable dialogue ID. `0x0892EC00` is a
-rejected dialogue-identity candidate because its writer is time-driven state.
-
-No parser, current-line object, font pointer, or safe hook address is accepted
-yet. See [findings.md](findings.md) and [addresses.md](addresses.md).
-
-## Exact next experiment
-
-The easiest high-value first pass is now LunaTranslator/LunaHook. It can search
-PPSSPP guest hooks directly and may expose the parser call faster than a manual
-write-watch trace:
-
-1. Attach current LunaTranslator to PPSSPP 1.20.4 at the early-dialogue save.
-2. Search while advancing exactly one textbox and record any stable guest hook
-   code, PC/address, register/offset, encoding, and two raw line samples.
-3. Cross-check that address with this repository's WebSocket debugger before
-   accepting it. Luna is a discovery tool, not a proven in-game write-back
-   solution.
-
-See [runtime-tool-survey.md](runtime-tool-survey.md) for the ranked tools,
-licenses, forum evidence, and exact adoption boundary. No public `UCJS10038`
-hook or script was found.
-
-If Luna yields only OCR/glyph output or no useful hook, continue the existing
-authoritative trace, which requires the user's Windows PPSSPP session and
-early-dialogue save:
-
-1. Run `launch-debug.bat`; confirm the interpreter build starts.
-2. Put a fully rendered textbox on screen.
-3. Run `probe-watch-glyph.bat` and follow its prompt.
-4. Advance exactly one textbox.
-5. Preserve the generated JSON report. A valid 1.20.4 stop has
-   `reason=memory.breakpoint` and `relatedAddress=0x0892EBA4`.
-6. Use the captured writer PC, GPRs, backtrace, and disassembly to trace
-   backward to the parser/lookup boundary. Do not treat `0x0892EBA4` itself as
-   the final hook.
-
-If the watch does not fire, inspect `memory.breakpoint.list.hits`, the returned
-PPSSPP version, and whether `-i` actually selected the interpreter before
-inventing another address.
-
-## Static data strategy after the parser is found
-
-The safe target identity is:
+Dialogue path is roughly:
 
 ```text
-(script file, named-pack member, dialog id/block, text element, segment/run)
+map/gz/*.bin -> named pack -> gzip/gzx member -> unnamed pack -> member 1
+             -> dialogue block -> 16-bit LE text runs
 ```
 
-The game path is `map/gz/*.bin` -> named pack -> gzip member -> unnamed pack ->
-member 1 -> dialogue blocks. Text is a little-endian 16-bit word stream. Preserve
-control words and original structural boundaries byte-for-byte. See
-[boku-dialogue-format.md](boku-dialogue-format.md).
+Use a structural identity, not RAM addresses:
 
-The Korean project demonstrates why fixed slots matter: a naive rebuild
-relocated 12 inner members and caused crashes/corruption. Its stable build kept
-59 changed script files and 392 audited members at identical inner offsets and
-sizes. Translation blobs for this project should therefore be generated from
-the JP and ES extracts without repacking either runtime archive.
+```text
+(script, named-pack member, dialog/block ID, text element, segment/run)
+```
 
-## What public research did and did not reveal
+Known words include `0x8000`/`0xFFFF` terminators, `0x8001` newline,
+`0x8002` page/pause + argument, and context-sensitive `0x0000`. Preserve the
+source raw stream exactly; especially keep tested `8002 hhhh 0000` page guards.
 
-The Spanish repository and all 16 commits contain only README/LICENSE/image
-assets. The v1.0 RAR contains `Leeme.txt`, `Parcheador.exe`, and one xdelta; it
-does not publish the translation database, build scripts, assembly patches, or
-an EBOOT symbol/address map. The public evidence does show a Pleonex-derived
-tool lineage and GriffithVIII's separate PSP ELF expansion utility, but it does
-not prove which private tool or revision produced v1.0. See
-[spanish-patch-archaeology.md](spanish-patch-archaeology.md).
+The Korean project also demonstrates that relocating inner dialogue members can
+cause crashes/corruption. Prefer immutable offline JP/ES blobs and fixed runtime
+structures; do not repack CDIMG at runtime.
 
-The Spanish character table and exact JP->ES EBOOT diff remain unknown until a
-lawful clean ISO and patched ISO are present. Do not infer either from the
-screenshots or the old Pleonex table.
+The **Spanish character table is still unknown**. Current ES decoded text that
+uses the JP table is not authoritative. The exact JP->ES EBOOT diff and Spanish
+font/code mapping require the user's lawful JP and patched ISO/extracted data.
 
-## Documents by purpose
+## Runtime evidence and current boundary
 
-- [architecture.md](architecture.md): intended runtime design and safety model.
-- [findings.md](findings.md): chronological measured results and rejected leads.
-- [ppsspp-1.20.4-debugger.md](ppsspp-1.20.4-debugger.md): exact debugger protocol
-  and memcheck semantics.
-- [boku-dialogue-format.md](boku-dialogue-format.md): static archive, script,
-  control-word, font, and rebuild facts.
-- [spanish-patch-archaeology.md](spanish-patch-archaeology.md): public lineage,
-  artifacts, claims, limitations, and excluded lookalike projects.
-- [runtime-tool-survey.md](runtime-tool-survey.md): ranked dynamic-hook tools,
-  licensing boundaries, forum evidence, and the Luna-first experiment.
-- [test-matrix.md](test-matrix.md): end-to-end acceptance coverage.
+Do not promote any of these addresses to a final hook yet.
+
+- Literal UTF-8/Latin-1/UTF-16 and simple contiguous unknown 8/16-bit searches
+  did not find the visible Spanish line.
+- `0x0881Cxxx` was a false lead caused by PPSSPP replacement/emuhack views when
+  RAM was read with `replacements=true`; it disappeared after raw reads.
+- `0x0892EC00` is rejected as dialogue identity: it is noisy/time-driven render
+  state and a prior writer path reached `sceKernelGetSystemTimeLow`.
+- With corrected raw reads, a 32 MiB multi-sample differential left only 12
+  clean line-specific bytes and no changed RAM pointers.
+- The best current trace seed is **`0x0892EBA4` (2 bytes)**. It was stable within
+  repeated samples of each textbox and changed `0x0063 -> 0x01C0` between two
+  textboxes. Nearby repeated halfwords suggest renderer/layout output, but that
+  semantic label is still only a hypothesis.
+
+No parser, current-line object, font pointer, or safe hook address is accepted.
+See [findings.md](findings.md) and [addresses.md](addresses.md).
+
+## Best next routes
+
+### 1. LunaTranslator/LunaHook discovery first
+
+This is currently the easiest high-value experiment. Luna has dedicated PPSSPP
+JIT/guest-address hook support and may expose the parser boundary faster than
+manual tracing. Treat it only as a **discovery/validation tool**; it has not
+been shown to provide the final in-game write-back toggle.
+
+When the user is available, ask them to attach Luna to PPSSPP at a known early
+dialogue and advance one textbox. Record any stable hook code, guest PC/address,
+register/offset, encoding, and raw samples for two lines. Cross-check the guest
+address with this repo before accepting it. If Luna yields only OCR/glyph-level
+noise, stop pursuing it and return to the debugger trace.
+
+### 2. Corrected authoritative write trace
+
+Fallback/current tracer:
+
+```text
+launch-debug.bat
+probe-watch-glyph.bat
+```
+
+The probe watches `0x0892EBA4`, size 2, in interpreter mode and must show an
+installed `write=true, change=true` memcheck. On 1.20.4, accept only a
+`cpu.stepping` event with `reason=memory.breakpoint` and matching
+`relatedAddress`. Capture writer PC, pre-store GPRs, backtrace, disassembly,
+module map and hit count, then trace **backward** toward a dialogue
+parser/lookup. `0x0892EBA4` itself is not the intended final hook.
+
+If the value changes but the watch still does not fire, debug the memcheck/tool
+semantics before inventing another game address.
+
+## Final implementation guidance
+
+Prefer hooking the narrowest verified point that receives/resolves a whole
+16-bit dialogue stream or stable record identity. A renderer/glyph hook is a
+last resort. Generate an immutable bilingual blob offline and select JP/ES raw
+streams at runtime while retaining the Spanish renderer changes.
+
+For PRX mechanics, **TF-MultiFix** is the best MIT reference found for
+module-relative MIPS hooks, load callbacks, `minjector`, and cache flushing.
+Keep this project's stricter edition hash/signature/bounds checks and fail
+closed on mismatch.
+
+The existing PRX is intentionally milestone-zero: loader + Note-button edge
+detector. Host F7 -> PPSSPP `input.buttons.press(note)` -> PSP Note bit -> PRX
+language state works as the input design; dialogue substitution is not yet
+implemented.
+
+## Known unknowns
+
+- Spanish code/glyph table and whether its font still contains all needed JP
+  glyphs.
+- Exact JP/ES EBOOT code/data diff and injected segments/hooks.
+- Stable runtime parser/lookup/current-line identity.
+- Whether the best final substitution point is resource lookup, script record,
+  parser input, or another whole-stream boundary.
+- How to force an already-visible textbox to rebuild immediately after toggle.
 
 ## Do not repeat these mistakes
 
-- Do not use post-1.20.4 PPSSPP source to describe the 1.20.4 binary.
-- Do not wait for a nonexistent `cpu.breakpoint.hit` event.
-- Do not send `client.config.set`; the event is `broadcast.config.set`.
+- Do not use newer PPSSPP source to infer 1.20.4 behavior.
+- Do not wait for nonexistent 1.20.4 `cpu.breakpoint.hit`.
+- Do not use `game.status.paused` as debugger stepping state.
 - Do not use `change=true` without `write=true`.
-- Do not read executable evidence with `replacements=true`.
-- Do not launch 1.20.4 with `--cpu=interpreter`; use `-i`.
-- Do not clone Pleonex's default branch and assume it is the latest tooling.
-- Do not stop blindly at every `0x0000`; it can be a segment/page guard.
-- Do not relocate inner dialogue-pack members to make longer text fit.
-- Do not claim the public Spanish repository contains its build source.
-- Do not copy the public 0xDC00 Agent host: its audited repository has no
-  license. Its separate PSP scripts repository is MIT.
-- Do not treat Luna extraction/overlay as proof of PSP in-game write-back.
+- Do not read forensic executable/RAM evidence with `replacements=true`.
+- Do not use `--cpu=interpreter`; 1.20.4 uses `-i`.
+- Do not decode Spanish dialogue with the JP table and treat it as Spanish text.
+- Do not treat renderer coordinates/RAM addresses as durable dialogue IDs.
+- Do not relocate dialogue-pack members just to make text fit.
+- Do not claim the public Spanish repository contains its private build source.
+- Do not treat Luna extraction/overlay as proof of in-game write-back.
+
+## Read deeper only when needed
+
+- [ppsspp-1.20.4-debugger.md](ppsspp-1.20.4-debugger.md) — exact debugger and
+  memcheck semantics.
+- [boku-dialogue-format.md](boku-dialogue-format.md) — containers, controls,
+  fonts, rebuild invariants.
+- [spanish-patch-archaeology.md](spanish-patch-archaeology.md) — public Spanish
+  lineage and what is/not recoverable.
+- [runtime-tool-survey.md](runtime-tool-survey.md) — Luna/PSPModBase/TF-MultiFix
+  decision and licensing.
+- [findings.md](findings.md) — chronological measurements and rejected leads.
+- [architecture.md](architecture.md) / [test-matrix.md](test-matrix.md) — target
+  design and acceptance coverage.
