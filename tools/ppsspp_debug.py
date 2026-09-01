@@ -54,9 +54,22 @@ class PPSSPPDebugger:
     def fire(self, event: str, **parameters: Any) -> None:
         self.ws.send(json.dumps({"event": event, **parameters}))
 
-    def read(self, address: int, size: int) -> bytes:
-        result = self.request("memory.read", address=address, size=size)
-        return base64.b64decode(result["base64"])
+    def read(self, address: int, size: int, *, replacements: bool = False) -> bytes:
+        """Read guest bytes exactly as stored in PSP memory.
+
+        PPSSPP's memory.read defaults replacements=true, which may expose emulator
+        replacement/emuhack opcodes in executable pages. Reverse-engineering RAM
+        snapshots need replacements=false or unchanged game code can appear to mutate.
+        """
+        result = self.request(
+            "memory.read", address=address, size=size, replacements=replacements
+        )
+        value = base64.b64decode(result["base64"])
+        if len(value) != size:
+            raise RuntimeError(
+                f"short memory.read at 0x{address:08X}: expected {size} bytes, got {len(value)}"
+            )
+        return value
 
     def write(self, address: int, value: bytes) -> None:
         self.request("memory.write", address=address, base64=base64.b64encode(value).decode("ascii"))
