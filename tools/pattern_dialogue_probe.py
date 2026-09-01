@@ -34,37 +34,75 @@ def read_ram(debugger: PPSSPPDebugger) -> bytes:
     return bytes(data)
 
 
-def wait_for_pause(debugger: PPSSPPDebugger, timeout: float = 5.0) -> dict[str, Any]:
+def wait_for_cpu_state(
+    debugger: PPSSPPDebugger,
+    stepping: bool,
+    timeout: float = 5.0,
+) -> dict[str, Any]:
     deadline = time.monotonic() + timeout
     last: dict[str, Any] = {}
     while time.monotonic() < deadline:
-        last = debugger.request("game.status")
-        if last.get("paused"):
+        last = debugger.request("cpu.status")
+        if bool(last.get("stepping")) == stepping:
             return last
         time.sleep(0.03)
-    raise RuntimeError(f"PPSSPP did not pause within {timeout:.1f}s; last status={last}")
+    wanted = "stepping" if stepping else "running"
+    raise RuntimeError(
+        f"PPSSPP CPU did not become {wanted} within {timeout:.1f}s; last cpu.status={last}"
+    )
 
 
-def stable_ram_snapshot(debugger: PPSSPPDebugger) -> tuple[dict[str, Any], bytes]:
-    """Pause the emulated CPU, read a coherent RAM image, then restore running state."""
-    initial = debugger.request("game.status")
-    was_paused = bool(initial.get("paused"))
-    print(f"game.status before snapshot: {initial}")
+def stable_ram_snapshot(
+    debugger: PPSSPPDebugger,
+) -> tuple[dict[str, Any], dict[str, Any], bytes]:
+    """Take a coherent RAM image while CPU stepping, then leave the game running.
 
-    if not was_paused:
-        print("Pausing PPSSPP for a coherent RAM snapshot...")
+    This probe is an interactive one-shot diagnostic, so an already-stepping CPU
+    is treated as a stale/debug pause (not as UI pause state) and is resumed when
+    the snapshot finishes. This also recovers from the older probe bug that could
+    leave the CPU stepping after a timeout.
+    """
+    game_status = debugger.request("game.status")
+    cpu_status = debugger.request("cpu.status")
+    print(f"game.status before snapshot: {game_status}")
+    print(f"cpu.status before snapshot:  {cpu_status}")
+
+    already_stepping = bool(cpu_status.get("stepping"))
+    if already_stepping:
+        print("CPU is already stepping; using the existing debug pause for this snapshot.")
+    else:
+        print("Pausing PSP CPU for a coherent RAM snapshot...")
         debugger.fire("cpu.stepping")
-        wait_for_pause(debugger)
 
+    snapshot_error: BaseException | None = None
+    ram = b""
     try:
+        wait_for_cpu_state(debugger, True)
+        print("CPU stepping confirmed.")
         ram = read_ram(debugger)
+    except BaseException as error:
+        snapshot_error = error
     finally:
-        if not was_paused:
-            debugger.fire("cpu.resume")
-            print("RAM snapshot complete; PPSSPP resumed.")
-        else:
-            print("RAM snapshot complete; PPSSPP was already paused and remains paused.")
-    return initial, ram
+        # This diagnostic always leaves the game running. In particular, this
+        # repairs the stale stepping state an older failed probe may have left.
+        try:
+            current = debugger.request("cpu.status")
+            if current.get("stepping"):
+                print("Resuming PSP CPU...")
+                debugger.fire("cpu.resume")
+                wait_for_cpu_state(debugger, False)
+                print("CPU running confirmed.")
+            else:
+                print("CPU is already running.")
+        except BaseException as resume_error:
+            if snapshot_error is None:
+                raise
+            print(f"WARNING: snapshot failed and automatic resume also failed: {resume_error}")
+
+    if snapshot_error is not None:
+        raise snapshot_error
+    print("RAM snapshot complete; PPSSPP resumed.")
+    return game_status, cpu_status, ram
 
 
 def find_all(haystack: bytes, needle: bytes, limit: int = 64) -> list[int]:
@@ -224,7 +262,7 @@ def main() -> None:
 
     debugger = PPSSPPDebugger(args.host, args.port, timeout=10.0)
     try:
-        status, ram = stable_ram_snapshot(debugger)
+        game_status, cpu_status, ram = stable_ram_snapshot(debugger)
     finally:
         debugger.close()
 
@@ -256,7 +294,8 @@ def main() -> None:
 
     report = {
         "query_text": args.text,
-        "game_status_before_snapshot": status,
+        "game_status_before_snapshot": game_status,
+        "cpu_status_before_snapshot": cpu_status,
         "decoded_database": db_info,
         "literal_searches": literal,
         "equality_16bit": hits16,
