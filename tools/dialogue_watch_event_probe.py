@@ -2,88 +2,18 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import time
 from pathlib import Path
 from typing import Any
 
-from websocket import WebSocketTimeoutException, create_connection
+from ppsspp_debug import PPSSPPDebugger
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def integer(value: str) -> int:
     return int(value, 0)
-
-
-class Session:
-    def __init__(self, host: str, port: int, timeout: float = 10.0):
-        self.ws = create_connection(
-            f"ws://{host}:{port}/debugger",
-            subprotocols=["debugger.ppsspp.org"],
-            timeout=timeout,
-            suppress_origin=True,
-        )
-        self.ticket = 0
-        self.pending: list[dict[str, Any]] = []
-        self.request("version", name="BokuLangBreakpointProbe", version="0.4")
-
-    def close(self) -> None:
-        self.ws.close()
-
-    def fire(self, event: str, **params: Any) -> None:
-        self.ws.send(json.dumps({"event": event, **params}))
-
-    def request(self, event: str, timeout: float | None = None, **params: Any) -> dict[str, Any]:
-        self.ticket += 1
-        ticket = self.ticket
-        self.ws.send(json.dumps({"event": event, "ticket": ticket, **params}))
-        previous_timeout = self.ws.gettimeout()
-        if timeout is not None:
-            self.ws.settimeout(timeout)
-        try:
-            while True:
-                message = json.loads(self.ws.recv())
-                if message.get("ticket") == ticket:
-                    if message.get("event") == "error":
-                        raise RuntimeError(message.get("message", message))
-                    return message
-                self.pending.append(message)
-        finally:
-            self.ws.settimeout(previous_timeout)
-
-    def wait_event(self, names: set[str], timeout: float) -> dict[str, Any]:
-        deadline = time.monotonic() + timeout
-        while True:
-            for index, message in enumerate(self.pending):
-                if message.get("event") in names:
-                    return self.pending.pop(index)
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError(f"timed out waiting for {sorted(names)}")
-            previous_timeout = self.ws.gettimeout()
-            self.ws.settimeout(remaining)
-            try:
-                message = json.loads(self.ws.recv())
-            except WebSocketTimeoutException as exc:
-                raise TimeoutError(f"timed out waiting for {sorted(names)}") from exc
-            finally:
-                self.ws.settimeout(previous_timeout)
-            if message.get("event") in names:
-                return message
-            self.pending.append(message)
-
-    def read(self, address: int, size: int) -> bytes:
-        response = self.request(
-            "memory.read", address=address, size=size, replacements=False
-        )
-        value = base64.b64decode(response["base64"])
-        if len(value) != size:
-            raise RuntimeError(
-                f"short memory.read at 0x{address:08X}: expected {size}, got {len(value)}"
-            )
-        return value
 
 
 def compact_regs(response: dict[str, Any]) -> dict[str, str]:
@@ -132,7 +62,7 @@ def breakpoint_matches(hit: Any, address: int, size: int) -> bool:
     return True
 
 
-def ensure_running(session: Session) -> None:
+def ensure_running(session: PPSSPPDebugger) -> None:
     status = session.request("cpu.status")
     if not status.get("stepping"):
         return
@@ -147,23 +77,39 @@ def ensure_running(session: Session) -> None:
     raise RuntimeError("CPU would not resume before arming")
 
 
-def wait_for_our_hit(session: Session, address: int, size: int, timeout: float) -> dict[str, Any]:
+def stepping_matches_memcheck(event: dict[str, Any], address: int, size: int) -> bool:
+    """Accept both PPSSPP 1.20.4 and newer enriched stepping events."""
+    hit = event.get("hit")
+    if breakpoint_matches(hit, address, size):
+        return True
+    if event.get("event") != "cpu.stepping":
+        return False
+    if event.get("reason") != "memory.breakpoint":
+        return False
+    try:
+        return int(event.get("relatedAddress")) == address
+    except (TypeError, ValueError):
+        return False
+
+
+def wait_for_our_hit(
+    session: PPSSPPDebugger, address: int, size: int, timeout: float
+) -> dict[str, Any]:
     deadline = time.monotonic() + timeout
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("no matching memory-breakpoint event before timeout")
-        event = session.wait_event({"cpu.breakpoint.hit", "cpu.stepping"}, remaining)
-        hit = event.get("hit")
-        if breakpoint_matches(hit, address, size):
+        event = session.wait_event({"cpu.stepping"}, remaining)
+        if stepping_matches_memcheck(event, address, size):
             return event
 
-        if event.get("event") == "cpu.stepping":
-            print(f"Ignoring unrelated cpu.stepping event (hit={hit!r}); resuming.")
-            session.fire("cpu.resume")
-            time.sleep(0.03)
-        elif hit is not None:
-            print(f"Ignoring unrelated breakpoint event: {hit}")
+        print(
+            "Ignoring unrelated cpu.stepping event "
+            f"(reason={event.get('reason')!r}, hit={event.get('hit')!r}); resuming."
+        )
+        session.fire("cpu.resume")
+        time.sleep(0.03)
 
 
 def write_report(path: Path, report: dict[str, Any]) -> None:
@@ -196,7 +142,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    session = Session(args.host, args.port)
+    session = PPSSPPDebugger(args.host, args.port, timeout=10.0)
     armed = False
     game: dict[str, Any] | None = None
     baseline = b""
@@ -255,7 +201,18 @@ def main() -> None:
         matched_event = wait_for_our_hit(session, args.address, args.size, args.timeout)
         elapsed = time.monotonic() - armed_at
 
-        hit = matched_event.get("hit") or {}
+        hit = matched_event.get("hit") or {
+            "kind": "memory",
+            "pc": matched_event.get("pc"),
+            "address": matched_event.get("relatedAddress"),
+            "size": None,
+            "access": "write (inferred from installed memcheck)",
+            "source": "PPSSPP 1.20.4 cpu.stepping broadcast",
+            "breakpoint": {
+                "start": args.address,
+                "end": args.address + args.size,
+            },
+        }
         print(f"\nREAL MEMORY BREAKPOINT EVENT after {elapsed:.3f}s")
         print(json.dumps(hit, ensure_ascii=False, indent=2))
 
@@ -281,7 +238,7 @@ def main() -> None:
         except Exception as exc:
             print(f"WARNING: backtrace failed: {exc}")
 
-        pc = int(hit.get("pc") or cpu_status.get("pc") or 0)
+        pc = int(hit.get("pc") or matched_event.get("pc") or cpu_status.get("pc") or 0)
         try:
             pc_disasm = session.request(
                 "memory.disasm", address=max(0x08000000, pc - 0x20), count=20,
@@ -291,6 +248,8 @@ def main() -> None:
             pc_disasm = {"error": str(exc)}
 
         after = session.read(args.address, args.size)
+        listed_after = session.request("memory.breakpoint.list")
+        memcheck_after = find_armed_memcheck(listed_after, args.address, args.size)
         write_report(args.output, {
             "result": "hit",
             "game_status": game,
@@ -302,6 +261,7 @@ def main() -> None:
                 "elapsed_seconds": elapsed,
             },
             "installed_memcheck": armed_memcheck,
+            "memcheck_at_hit": memcheck_after,
             "breakpoint_event": matched_event,
             "cpu_status": cpu_status,
             "registers": regs,

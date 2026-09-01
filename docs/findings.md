@@ -10,10 +10,20 @@
 - Known clean Japanese ISO MD5 from the Korean tool project: `B4D363D59CB87E25AB76AFC5384CCA31`.
 - PPSSPP portable baseline: 1.20.4 Windows x64.
 - PPSSPP ZIP SHA-256: `FBC9CD2F5131B159A92424E5C458C35CE43BA603CDDED64DFC98E4BD4F17FF93`.
-- PPSSPP source snapshot: `56bba5f6f5e4ce5786f8528e73f2ece391fe34ea`.
-- Spanish repository snapshot: `86820b58d881c9d947b87f6a913297bc9aec8163`.
-- Korean tooling snapshot: recorded by `scripts/bootstrap.ps1` on each checkout.
-- Pleonex tooling snapshot: `c88677d5709338fe1adf0fe61bb9dd43404e55ac`.
+- PPSSPP 1.20.4 source commit: `fa50bb1976065c4f8b1b47af227d367fe9771555`.
+- Formerly referenced PPSSPP snapshot `56bba5f6f5e4ce5786f8528e73f2ece391fe34ea`
+  is from 2026-08-31, more than three months after 1.20.4, and cannot define
+  the shipped debugger protocol.
+- Spanish release tag: `v1.0` -> `c0e3d2d5417013e4f4b34e416b58743f7efd86ad`.
+  The current documentation-only `main` snapshot is
+  `86820b58d881c9d947b87f6a913297bc9aec8163`.
+- Korean tooling tag: `v0.1.3-image-kr` ->
+  `97d0b30391ccfd44764863b1873f7d0a68246c96`.
+- Pleonex/GriffithVIII tooling snapshot:
+  `dae1215b13ca7dbc6fa17971ecd3d58de86b097a`. This includes Pleonex's
+  non-default `feature/yarhl` rewrite plus GriffithVIII's extended table and
+  second font sheet. The default branch's `c88677d...` snapshot is incomplete
+  for this research.
 
 ## Local inventory
 
@@ -30,6 +40,35 @@ EBOOT changes add horizontal dialogue and several subtitle systems. Therefore
 the Spanish EBOOT is the initial runtime base; Japanese mode must restore
 original Japanese content without discarding those useful renderer changes.
 
+The public Spanish Git history contains only README/LICENSE/screenshots. The
+release RAR contains `Leeme.txt`, `Parcheador.exe`, and a single xdelta. It does
+not contain the translation database, build tools, assembly, or an EBOOT map.
+See `spanish-patch-archaeology.md` for the audited public lineage and the clear
+boundary between confirmed facts and inference.
+
+## Static format/tool audit (2026-09-01)
+
+- Pleonex's default `master` ends in 2015. The 2021 public `feature/yarhl`
+  branch migrates to Yarhl and adds PO export; default shallow clones miss it.
+- Two later GriffithVIII commits are still public by SHA: `dbf1d2f...` adds an
+  extended, game-tested table and `dae1215...` adds the second font sheet.
+- The Yarhl tool is an exporter, not a complete patch builder. It has no PO
+  import/rebuild path, stops at every `0x0000`, and uses the old 1,024-entry
+  embedded table.
+- The Korean v0.1.3 project is the most complete public successor: extraction,
+  raw/fixed-slot rebuilds, font/PIM2 patching, image patching, 8,526 structured
+  dialogue rows, and checked-in stability reports.
+- Its fixed-pack report records 59 changed scripts and 392 audited members with
+  zero inner offset/size changes. A prior relocation of 12 members caused
+  crashes or background corruption.
+- Its pause-guard report establishes the tested multi-page sequence
+  `8002 hhhh 0000`; removing the zero can consume the next page's first glyph.
+- The old Pleonex wiki's `0x8000` CDIMG padding sentence is a typo. Its own FAT
+  formula and both public implementations use `0x800`-byte sectors.
+- GriffithVIII's public `PSP_ELFHandler` can add a loadable RWX segment to a PSP
+  ELF, but no public evidence proves it built the Spanish EBOOT. Its README also
+  omits the `INCREASE` verb required by the code.
+
 ## Runtime investigation (2026-08-31)
 
 - Exact visible Spanish dialogue was not found in PSP RAM as literal UTF-8, Latin-1, UTF-16, or as a simple unknown fixed-width 8-bit/16-bit equality-pattern stream.
@@ -42,10 +81,25 @@ original Japanese content without discarding those useful renderer changes.
 - After switching debugger RAM reads to `replacements=false`, a fresh 32 MiB stable differential found only 12 line-specific clean bytes, zero changed RAM pointers, and the prior `0x0881Cxxx` executable-code cluster disappeared entirely. This validates that the earlier code-region candidates were debugger replacement contamination, not Boku self-modifying its EBOOT.
 - A targeted rerun over the few surviving pages found a strong line-dependent cluster in page `0x0892EB00`. In that run `0x0892EBA4` was stable across all same-textbox samples and changed from little-endian halfword `0x0063` (99) on textbox A to `0x01C0` (448) on textbox B. Nearby halfwords change in repeated pairs, still consistent with renderer/layout geometry rather than raw dialogue identity.
 - Differential candidates must be classified against PPSSPP's `hle.func.list` / module map before any watchpoint is armed. `classify_diff_candidates.py` performs this gate on saved differential reports.
-- The original watch scripts incorrectly inferred a breakpoint hit from `cpu.status.stepping`. PPSSPP exposes the actual reason through the unsolicited `cpu.breakpoint.hit` broadcast; `dialogue_watch_event_probe.py` now waits for that real event and ignores unrelated stepping states.
+- The original watch scripts incorrectly inferred a breakpoint hit from
+  `cpu.status.stepping`. A source audit then found a second, opposite error:
+  PPSSPP 1.20.4 has no `cpu.breakpoint.hit` event. It broadcasts
+  `cpu.stepping` with `reason="memory.breakpoint"` and `relatedAddress` equal to
+  the memcheck start. The prior event probe discarded that real notification
+  as unrelated and resumed the CPU. `dialogue_watch_event_probe.py` now matches
+  the exact 1.20.4 payload while also accepting newer enriched stepping events.
 - A second watchpoint bug was found in the PPSSPP memory-breakpoint flags: `change=true` is `MEMCHECK_WRITE_ONCHANGE`, but PPSSPP's write-change path requires the normal `MEMCHECK_WRITE` bit as well. The previous probe used `write=false, change=true`, an inert/invalid combination. The probe now uses `write=true, change=true` and verifies the installed memcheck via `memory.breakpoint.list` before proceeding.
+- In 1.20.4 interpreter mode, `WRITE_ONCHANGE` does not compare the pending
+  value with RAM; the interpreter calls `ExecMemCheck()`, which treats it as a
+  normal write watch. The JIT path calls `ExecOpMemCheck()` and performs the
+  supported-store value comparison. Interpreter mode is still preferable for
+  finding the writer because it stops before executing the store with the
+  writer PC and pre-store registers intact.
 - `probe-watch-glyph.bat` now watches the exact 2-byte halfword at `0x0892EBA4`, which is proven by the corrected targeted differential to change between the two tested textboxes. The goal is to catch the actual CPU instruction that updates line-dependent renderer/layout data and then trace backward toward the text parser.
 - JIT memcheck register snapshots contained many `0xDEADBEEF` values. Future memory-breakpoint work should use PPSSPP interpreter mode (`launch-debug.bat`) for reliable registers/memchecks.
+- The old launcher passed unsupported `--cpu=interpreter`. PPSSPP 1.20.4's
+  desktop parser selects the interpreter with `-i`; `launch-debug.bat` now
+  reaches that supported path.
 
 ## Pending measured results
 

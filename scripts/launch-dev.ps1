@@ -18,7 +18,8 @@ $ppssppArgs = [Collections.Generic.List[string]]::new()
 if ($Interpreter) {
     # PPSSPP's interpreter is far slower than JIT, but memory breakpoints and
     # register state are substantially more reliable for reverse engineering.
-    $ppssppArgs.Add('--cpu=interpreter')
+    # PPSSPP 1.20.4's desktop command-line parser uses the short -i flag.
+    $ppssppArgs.Add('-i')
 }
 $ppssppArgs.Add("`"$Iso`"")
 Start-Process -FilePath $exe -ArgumentList $ppssppArgs

@@ -8,7 +8,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from websocket import WebSocketTimeoutException, create_connection
 
@@ -23,13 +23,12 @@ class PPSSPPDebugger:
             suppress_origin=True,
         )
         self.ticket = 0
+        self.pending: list[dict[str, Any]] = []
         self.request("version", name="BokuLangToggle", version="0.1")
-        try:
-            self.request("client.config.set", acknowledgeDeferred=True)
-        except RuntimeError as error:
-            # PPSSPP 1.20.4 predates this optional acknowledgement event.
-            if "unknown event" not in str(error):
-                raise
+        # PPSSPP 1.20.4 calls this broadcast.config.set (not
+        # client.config.set.)  Explicitly keep stepping broadcasts enabled;
+        # memory-breakpoint hits are reported through cpu.stepping in 1.20.4.
+        self.request("broadcast.config.set", disallowed={"stepping": False})
 
     def close(self) -> None:
         self.ws.close()
@@ -39,13 +38,28 @@ class PPSSPPDebugger:
         self.ws.send(json.dumps({"event": event, "ticket": self.ticket, **parameters}))
         return self.ticket
 
-    def request(self, event: str, timeout: float | None = None, **parameters: Any) -> dict[str, Any]:
-        ticket = self.send(event, **parameters)
+    def _recv(self, timeout: float | None = None) -> dict[str, Any]:
+        previous_timeout = self.ws.gettimeout()
         if timeout is not None:
             self.ws.settimeout(timeout)
-        while True:
+        try:
             message = json.loads(self.ws.recv())
+        finally:
+            self.ws.settimeout(previous_timeout)
+        if not isinstance(message, dict):
+            raise RuntimeError(f"PPSSPP returned a non-object message: {message!r}")
+        return message
+
+    def request(self, event: str, timeout: float | None = None, **parameters: Any) -> dict[str, Any]:
+        ticket = self.send(event, **parameters)
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while True:
+            remaining = None if deadline is None else deadline - time.monotonic()
+            if remaining is not None and remaining <= 0:
+                raise WebSocketTimeoutException(f"timed out waiting for ticket {ticket}")
+            message = self._recv(remaining)
             if message.get("ticket") != ticket:
+                self.pending.append(message)
                 continue
             if message.get("event") == "error":
                 raise RuntimeError(message.get("message", message))
@@ -53,6 +67,37 @@ class PPSSPPDebugger:
 
     def fire(self, event: str, **parameters: Any) -> None:
         self.ws.send(json.dumps({"event": event, **parameters}))
+
+    def wait_event(
+        self,
+        names: set[str],
+        timeout: float,
+        predicate: Callable[[dict[str, Any]], bool] | None = None,
+    ) -> dict[str, Any]:
+        """Wait for a broadcast without losing interleaved messages.
+
+        Requests and broadcasts share one WebSocket.  request() queues every
+        message whose ticket does not match; wait_event() consumes a matching
+        queued broadcast first, then continues receiving while preserving all
+        unrelated traffic.
+        """
+        matches = predicate or (lambda _message: True)
+        deadline = time.monotonic() + timeout
+        while True:
+            for index, message in enumerate(self.pending):
+                if message.get("event") in names and matches(message):
+                    return self.pending.pop(index)
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"timed out waiting for {sorted(names)}")
+            try:
+                message = self._recv(remaining)
+            except WebSocketTimeoutException as exc:
+                raise TimeoutError(f"timed out waiting for {sorted(names)}") from exc
+            if message.get("event") in names and matches(message):
+                return message
+            self.pending.append(message)
 
     def read(self, address: int, size: int, *, replacements: bool = False) -> bytes:
         """Read guest bytes exactly as stored in PSP memory.
@@ -232,11 +277,7 @@ def main() -> None:
             output = debugger.request("input.buttons.press", button=args.button, duration=args.duration)
         elif args.command == "screenshot":
             debugger.fire("cpu.stepping")
-            debugger.ws.settimeout(5.0)
-            while True:
-                paused = json.loads(debugger.ws.recv())
-                if paused.get("event") == "cpu.stepping":
-                    break
+            debugger.wait_event({"cpu.stepping"}, 5.0)
             try:
                 response = debugger.request("gpu.buffer.screenshot")
             finally:

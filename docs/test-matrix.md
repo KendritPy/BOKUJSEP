@@ -1,5 +1,16 @@
 # Test matrix
 
+## Automated tooling
+
+- [x] WebSocket ticket/event interleaving preserves unsolicited broadcasts
+- [x] Event waits preserve unrelated queued/socket messages
+- [x] Temporary socket timeouts are restored after errors
+- [x] Raw memory reads send `replacements=false` and validate length
+- [x] PPSSPP 1.20.4 memory-breakpoint stepping payload is recognized
+- [x] Newer enriched memory-breakpoint stepping payload is recognized
+- [ ] Live PPSSPP 1.20.4 interpreter watch at `0x0892EBA4`
+- [ ] Bootstrap verified from a clean Windows checkout
+
 ## Baseline
 
 - [ ] Clean JP ISO reaches gameplay
@@ -38,4 +49,3 @@
 
 - [ ] Menus, insects, diary, minigames
 - [ ] Movies and Spanish-added subtitles
-
