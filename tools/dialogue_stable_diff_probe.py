@@ -63,35 +63,36 @@ def snapshot(debugger: PPSSPPDebugger, label: str) -> bytes:
 
 
 def accumulate_noise(mask: bytearray, baseline: bytes, sample: bytes) -> int:
-    changed = 0
+    newly_changed = 0
     for i, (a, b) in enumerate(zip(baseline, sample)):
-        if a != b:
-            if not mask[i]:
-                changed += 1
+        if a != b and not mask[i]:
             mask[i] = 1
-    return changed
+            newly_changed += 1
+    return newly_changed
 
 
 def capture_stability_group(
     debugger: PPSSPPDebugger,
     label: str,
     delays: tuple[float, ...],
-) -> tuple[bytes, bytearray, list[dict[str, Any]]]:
+) -> tuple[bytes, bytearray, list[dict[str, Any]], int]:
     baseline = snapshot(debugger, f"{label} baseline")
     noise = bytearray(RAM_SIZE)
+    total_noisy = 0
     samples: list[dict[str, Any]] = []
     for index, delay in enumerate(delays, 1):
         print(f"Waiting {delay:.2f}s with the SAME textbox...")
         time.sleep(delay)
         current = snapshot(debugger, f"{label} stability {index}/{len(delays)}")
         newly_noisy = accumulate_noise(noise, baseline, current)
+        total_noisy += newly_noisy
         samples.append({
             "delay_seconds": delay,
             "newly_noisy_bytes": newly_noisy,
-            "total_noisy_bytes": int(sum(noise)),
+            "total_noisy_bytes": total_noisy,
         })
-        print(f"{label}: +{newly_noisy:,} newly noisy bytes; total={sum(noise):,}")
-    return baseline, noise, samples
+        print(f"{label}: +{newly_noisy:,} newly noisy bytes; total={total_noisy:,}")
+    return baseline, noise, samples, total_noisy
 
 
 def changed_mask(left: bytes, right: bytes) -> bytearray:
@@ -164,10 +165,14 @@ def page_report(transition: bytearray, noise_a: bytearray, noise_b: bytearray, c
     return pages[:limit]
 
 
+def word_is_noisy(mask: bytearray, offset: int) -> bool:
+    return bool(mask[offset] or mask[offset + 1] or mask[offset + 2] or mask[offset + 3])
+
+
 def pointer_changes(a: bytes, b: bytes, noise_a: bytearray, noise_b: bytearray, limit: int) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for offset in range(0, RAM_SIZE - 3, 4):
-        if any(noise_a[offset:offset + 4]) or any(noise_b[offset:offset + 4]):
+        if word_is_noisy(noise_a, offset) or word_is_noisy(noise_b, offset):
             continue
         old = int.from_bytes(a[offset:offset + 4], "little")
         new = int.from_bytes(b[offset:offset + 4], "little")
@@ -204,13 +209,13 @@ def main() -> None:
         game = debugger.request("game.status")
         print(f"game.status: {game}")
         print("\nPHASE A: leave the CURRENT textbox fully visible and do not advance it.")
-        a, noise_a, samples_a = capture_stability_group(debugger, "A", DEFAULT_DELAYS)
+        a, noise_a, samples_a, total_noise_a = capture_stability_group(debugger, "A", DEFAULT_DELAYS)
 
         print("\nAdvance EXACTLY ONE dialogue box now.")
         print("Wait until the next textbox is fully visible, then return here.")
         input(">>> Press ENTER when the NEXT textbox is stable: ")
 
-        b, noise_b, samples_b = capture_stability_group(debugger, "B", DEFAULT_DELAYS)
+        b, noise_b, samples_b, total_noise_b = capture_stability_group(debugger, "B", DEFAULT_DELAYS)
     finally:
         debugger.close()
 
@@ -219,12 +224,14 @@ def main() -> None:
         int(bool(transition[i]) and not bool(noise_a[i]) and not bool(noise_b[i]))
         for i in range(RAM_SIZE)
     )
+    total_transition = int(sum(transition))
+    total_clean = int(sum(clean))
 
     print("\n=== Robust differential summary ===")
-    print(f"A bytes ever noisy across {len(DEFAULT_DELAYS)} samples: {sum(noise_a):,}")
-    print(f"B bytes ever noisy across {len(DEFAULT_DELAYS)} samples: {sum(noise_b):,}")
-    print(f"A -> B changed bytes: {sum(transition):,}")
-    print(f"surviving line-specific bytes: {sum(clean):,}")
+    print(f"A bytes ever noisy across {len(DEFAULT_DELAYS)} samples: {total_noise_a:,}")
+    print(f"B bytes ever noisy across {len(DEFAULT_DELAYS)} samples: {total_noise_b:,}")
+    print(f"A -> B changed bytes: {total_transition:,}")
+    print(f"surviving line-specific bytes: {total_clean:,}")
 
     pages = page_report(transition, noise_a, noise_b, clean, args.page_limit)
     print("\nTop candidate 256-byte pages:")
@@ -259,10 +266,10 @@ def main() -> None:
         "samples_a": samples_a,
         "samples_b": samples_b,
         "summary": {
-            "noise_a_ever_changed": int(sum(noise_a)),
-            "noise_b_ever_changed": int(sum(noise_b)),
-            "transition_changed": int(sum(transition)),
-            "clean_line_specific": int(sum(clean)),
+            "noise_a_ever_changed": total_noise_a,
+            "noise_b_ever_changed": total_noise_b,
+            "transition_changed": total_transition,
+            "clean_line_specific": total_clean,
         },
         "candidate_pages": pages,
         "clean_runs": [
