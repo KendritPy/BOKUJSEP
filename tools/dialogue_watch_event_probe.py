@@ -27,7 +27,7 @@ class Session:
         )
         self.ticket = 0
         self.pending: list[dict[str, Any]] = []
-        self.request("version", name="BokuLangBreakpointProbe", version="0.2")
+        self.request("version", name="BokuLangBreakpointProbe", version="0.3")
 
     def close(self) -> None:
         self.ws.close()
@@ -49,7 +49,6 @@ class Session:
                     if message.get("event") == "error":
                         raise RuntimeError(message.get("message", message))
                     return message
-                # Never throw broadcasts away. Breakpoint hit details are delivered this way.
                 self.pending.append(message)
         finally:
             self.ws.settimeout(previous_timeout)
@@ -76,8 +75,15 @@ class Session:
             self.pending.append(message)
 
     def read(self, address: int, size: int) -> bytes:
-        response = self.request("memory.read", address=address, size=size)
-        return base64.b64decode(response["base64"])
+        response = self.request(
+            "memory.read", address=address, size=size, replacements=False
+        )
+        value = base64.b64decode(response["base64"])
+        if len(value) != size:
+            raise RuntimeError(
+                f"short memory.read at 0x{address:08X}: expected {size}, got {len(value)}"
+            )
+        return value
 
 
 def compact_regs(response: dict[str, Any]) -> dict[str, str]:
@@ -116,7 +122,6 @@ def breakpoint_matches(hit: Any, address: int, size: int) -> bool:
         try:
             end_int = int(end)
             if end_int not in (address + size, address + size - 1):
-                # Don't reject solely on old/new inclusive convention if the actual access matches.
                 if actual is None:
                     return False
         except (TypeError, ValueError):
@@ -151,12 +156,17 @@ def wait_for_our_hit(session: Session, address: int, size: int, timeout: float) 
             return event
 
         if event.get("event") == "cpu.stepping":
-            # A manual debugger pause, savestate transition, exception, etc. is not our memcheck.
             print(f"Ignoring unrelated cpu.stepping event (hit={hit!r}); resuming.")
             session.fire("cpu.resume")
             time.sleep(0.03)
         elif hit is not None:
             print(f"Ignoring unrelated breakpoint event: {hit}")
+
+
+def write_report(path: Path, report: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"Wrote {path}")
 
 
 def main() -> None:
@@ -175,9 +185,11 @@ def main() -> None:
 
     session = Session(args.host, args.port)
     armed = False
-    matched_event: dict[str, Any] | None = None
     game: dict[str, Any] | None = None
     baseline = b""
+    modules: dict[str, Any] | None = None
+    watched_disasm: dict[str, Any] | None = None
+    armed_at: float | None = None
     try:
         game = session.request("game.status")
         print(f"game.status: {game}")
@@ -220,7 +232,6 @@ def main() -> None:
         print(f"\nREAL MEMORY BREAKPOINT EVENT after {elapsed:.3f}s")
         print(json.dumps(hit, ensure_ascii=False, indent=2))
 
-        # The breakpoint action should pause the CPU. Wait briefly for that state so register reads are coherent.
         deadline = time.monotonic() + 2.0
         cpu_status: dict[str, Any] = {}
         while time.monotonic() < deadline:
@@ -253,7 +264,8 @@ def main() -> None:
             pc_disasm = {"error": str(exc)}
 
         after = session.read(args.address, args.size)
-        report = {
+        write_report(args.output, {
+            "result": "hit",
             "game_status": game,
             "watch": {
                 "address": f"0x{args.address:08X}",
@@ -270,14 +282,33 @@ def main() -> None:
             "watched_address_disasm": watched_disasm,
             "pc_disasm": pc_disasm,
             "modules": modules,
-        }
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        print(f"Wrote {args.output}")
+        })
 
     except TimeoutError as exc:
         print(f"\n{exc}")
         print("If you advanced the textbox, this watched word was not touched by a matching memory breakpoint event.")
+        try:
+            after = session.read(args.address, args.size)
+            after_hex = after.hex().upper()
+        except Exception as read_exc:
+            after_hex = None
+            session.pending.append({"event": "probe.read_after_timeout.error", "message": str(read_exc)})
+        elapsed = time.monotonic() - armed_at if armed_at is not None else None
+        write_report(args.output, {
+            "result": "timeout",
+            "error": str(exc),
+            "game_status": game,
+            "watch": {
+                "address": f"0x{args.address:08X}",
+                "size": args.size,
+                "baseline_hex": baseline.hex().upper(),
+                "after_hex": after_hex,
+                "elapsed_seconds": elapsed,
+            },
+            "pending_events": session.pending[-50:],
+            "watched_address_disasm": watched_disasm,
+            "modules": modules,
+        })
     finally:
         if armed:
             try:
