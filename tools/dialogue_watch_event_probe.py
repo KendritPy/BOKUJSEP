@@ -27,7 +27,7 @@ class Session:
         )
         self.ticket = 0
         self.pending: list[dict[str, Any]] = []
-        self.request("version", name="BokuLangBreakpointProbe", version="0.3")
+        self.request("version", name="BokuLangBreakpointProbe", version="0.4")
 
     def close(self) -> None:
         self.ws.close()
@@ -114,7 +114,10 @@ def breakpoint_matches(hit: Any, address: int, size: int) -> bool:
             actual_int = int(actual)
         except (TypeError, ValueError):
             return False
-        if not (address <= actual_int < address + size):
+        # A store may begin just before our range and overlap it, so accept either
+        # an access address inside the range or an access interval overlapping it.
+        hit_size = int(hit.get("size") or 1)
+        if actual_int + hit_size <= address or actual_int >= address + size:
             return False
     if start is None and actual is None:
         return False
@@ -169,6 +172,16 @@ def write_report(path: Path, report: dict[str, Any]) -> None:
     print(f"Wrote {path}")
 
 
+def find_armed_memcheck(response: dict[str, Any], address: int, size: int) -> dict[str, Any] | None:
+    for item in response.get("breakpoints", []):
+        try:
+            if int(item.get("address")) == address and int(item.get("size")) == size:
+                return item
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Capture a real PPSSPP memory-breakpoint broadcast for a dialogue candidate.")
     parser.add_argument("--host", default="127.0.0.1")
@@ -190,6 +203,7 @@ def main() -> None:
     modules: dict[str, Any] | None = None
     watched_disasm: dict[str, Any] | None = None
     armed_at: float | None = None
+    armed_memcheck: dict[str, Any] | None = None
     try:
         game = session.request("game.status")
         print(f"game.status: {game}")
@@ -212,6 +226,9 @@ def main() -> None:
         print("\nLeave the current textbox fully visible.")
         input("Press ENTER here to arm the real memcheck. Then switch to PPSSPP and advance exactly ONE textbox: ")
 
+        # PPSSPP's WRITE_ONCHANGE is a modifier of WRITE, not a standalone
+        # access mode. A valid write-change watch therefore requires BOTH bits:
+        # write=True and change=True.
         session.request(
             "memory.breakpoint.add",
             address=args.address,
@@ -219,12 +236,22 @@ def main() -> None:
             enabled=True,
             log=True,
             read=False,
-            write=False,
+            write=True,
             change=True,
         )
         armed = True
+
+        listed = session.request("memory.breakpoint.list")
+        armed_memcheck = find_armed_memcheck(listed, args.address, args.size)
+        if armed_memcheck is None:
+            raise RuntimeError("PPSSPP did not list the memory breakpoint after arming")
+        print("Installed memcheck:")
+        print(json.dumps(armed_memcheck, ensure_ascii=False, indent=2))
+        if not armed_memcheck.get("write") or not armed_memcheck.get("change"):
+            raise RuntimeError(f"PPSSPP installed unexpected memcheck flags: {armed_memcheck}")
+
         armed_at = time.monotonic()
-        print("ARMED. Now advance exactly one textbox in PPSSPP.")
+        print("ARMED AND VERIFIED. Now advance exactly one textbox in PPSSPP.")
         matched_event = wait_for_our_hit(session, args.address, args.size, args.timeout)
         elapsed = time.monotonic() - armed_at
 
@@ -274,6 +301,7 @@ def main() -> None:
                 "after_hex": after.hex().upper(),
                 "elapsed_seconds": elapsed,
             },
+            "installed_memcheck": armed_memcheck,
             "breakpoint_event": matched_event,
             "cpu_status": cpu_status,
             "registers": regs,
@@ -286,7 +314,7 @@ def main() -> None:
 
     except TimeoutError as exc:
         print(f"\n{exc}")
-        print("If you advanced the textbox, this watched word was not touched by a matching memory breakpoint event.")
+        print("If you advanced the textbox, this watched value was not changed by a matching CPU write during the window.")
         try:
             after = session.read(args.address, args.size)
             after_hex = after.hex().upper()
@@ -305,6 +333,7 @@ def main() -> None:
                 "after_hex": after_hex,
                 "elapsed_seconds": elapsed,
             },
+            "installed_memcheck": armed_memcheck,
             "pending_events": session.pending[-50:],
             "watched_address_disasm": watched_disasm,
             "modules": modules,
