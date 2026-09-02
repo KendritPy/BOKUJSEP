@@ -9,20 +9,20 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
 if (-not $Iso) { $Iso = Join-Path $root 'input/es/Boku_ES.iso' }
-if (-not (Test-Path -LiteralPath $Iso)) { throw "ISO not found: $Iso. Run install.bat first." }
+if (-not (Test-Path -LiteralPath $Iso)) { throw "No se encontró la ISO: $Iso. Ejecuta install.bat primero." }
 
 $exe = Join-Path $root 'external/ppsspp-bin/portable/PPSSPPWindows64.exe'
 $memstick = Join-Path $root 'external/ppsspp-bin/portable/memstick'
-if (-not (Test-Path -LiteralPath $exe)) { throw 'Portable PPSSPP is missing. Run install.bat first.' }
+if (-not (Test-Path -LiteralPath $exe)) { throw 'Falta la instalación portátil de PPSSPP. Ejecuta install.bat primero.' }
 
 $running = Get-Process -Name 'PPSSPPWindows64' -ErrorAction SilentlyContinue
 if ($running) {
     $ids = ($running.Id | Sort-Object) -join ', '
-    throw "PPSSPP is already running (PID(s): $ids). Close it fully and run launch.bat again."
+    throw "PPSSPP ya está ejecutándose (PID: $ids). Ciérralo por completo y vuelve a ejecutar launch.bat."
 }
 
-# A previous launcher can leave the hidden host-side hotkey helper alive.
-# Stop only helpers started from this checkout so one keypress cannot be sent twice.
+# Un arranque anterior puede dejar activo el helper oculto de la tecla de cambio.
+# Detenemos únicamente los helpers iniciados desde este checkout para evitar duplicar pulsaciones.
 $debugClient = Join-Path $root 'tools/ppsspp_debug.py'
 $staleHotkeys = Get-CimInstance Win32_Process -Filter "Name = 'pythonw.exe'" -ErrorAction SilentlyContinue |
     Where-Object {
@@ -42,7 +42,7 @@ if ($Interpreter) { $ppssppArgs.Add('-i') }
 $ppssppArgs.Add("`"$Iso`"")
 Start-Process -FilePath $exe -ArgumentList $ppssppArgs
 
-Write-Host "PPSSPP started; waiting for debugger port $DebuggerPort..."
+Write-Host "PPSSPP iniciado; esperando el puerto de depuración $DebuggerPort..."
 $deadline = [DateTime]::UtcNow.AddSeconds(20)
 $ready = $false
 do {
@@ -56,12 +56,12 @@ do {
         $client.Dispose()
     }
 } while (-not $ready -and [DateTime]::UtcNow -lt $deadline)
-if (-not $ready) { throw "PPSSPP debugger did not open port $DebuggerPort within 20 seconds." }
+if (-not $ready) { throw "El depurador de PPSSPP no abrió el puerto $DebuggerPort en 20 segundos." }
 
 $pythonw = Join-Path $root '.venv/Scripts/pythonw.exe'
-if (-not (Test-Path -LiteralPath $pythonw)) { throw 'Python environment is missing. Run install.bat first.' }
+if (-not (Test-Path -LiteralPath $pythonw)) { throw 'Falta el entorno de Python. Ejecuta install.bat primero.' }
 Start-Process -FilePath $pythonw `
     -ArgumentList @("`"$debugClient`"", '--port', $DebuggerPort, 'hotkey', '--key', $Hotkey) `
     -WindowStyle Hidden
 
-Write-Host "Language toggle active on $Hotkey." -ForegroundColor Green
+Write-Host "Cambio de idioma activo en $Hotkey." -ForegroundColor Green
