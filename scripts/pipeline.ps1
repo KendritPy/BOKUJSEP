@@ -1,4 +1,4 @@
-param([switch]$Force)
+﻿param([switch]$Force)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $root '.venv/Scripts/python.exe'
