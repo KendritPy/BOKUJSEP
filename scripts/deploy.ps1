@@ -1,4 +1,4 @@
-param([string]$Memstick = '')
+﻿param([string]$Memstick = '')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 if (-not $Memstick) { $Memstick = Join-Path $root 'external/ppsspp-bin/portable/memstick' }
