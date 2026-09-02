@@ -1,68 +1,68 @@
-# Boku Portable dialogue format
+# Formato de diálogo de Boku Portable
 
-This document records the serialized structures BokuLangToggle depends on. The implementation preserves raw game words and structural identities; decoded strings are for inspection only.
+Este documento describe las estructuras serializadas de las que depende BokuLangToggle. La implementación conserva las palabras binarias originales del juego y las identidades estructurales; las cadenas decodificadas se utilizan únicamente para inspección.
 
-## Container path
+## Ruta de los contenedores
 
 ```text
 PSP_GAME/USRDIR/
   cdimg.idx + cdimg0.img
     -> map/gz/*.bin
       -> M_*.bin.gz / .gzx
-        -> unnamed pack
-          -> member 1
-            -> dialogue file
-              -> block
-                -> text element/run
+        -> pack sin nombre
+          -> miembro 1
+            -> archivo de diálogo
+              -> bloque
+                -> elemento de texto/segmento
 ```
 
-A stable dialogue identity is based on this structure, not on a runtime RAM address:
+La identidad estable de un diálogo se basa en esta estructura, no en una dirección de RAM en tiempo de ejecución:
 
 ```text
-(script, named-pack member, dialog/block id, text element, segment/run)
+(script, miembro del pack con nombre, id de diálogo/bloque, elemento de texto, segmento)
 ```
 
-## CDIMG and packs
+## CDIMG y packs
 
-`cdimg.idx` begins with `DFI\0`. File offsets are stored in `0x800`-byte sectors. Named packs contain a count followed by `0x0C`-byte entries `(offset, size, name_offset)`; unnamed packs use `0x08`-byte `(offset, size)` entries. `.gz` members are ordinary gzip streams; `.gzx` adds a 32-bit decompressed-size prefix before the gzip data.
+`cdimg.idx` comienza con `DFI\0`. Los offsets de archivo se almacenan en sectores de `0x800` bytes. Los packs con nombre contienen un contador seguido de entradas de `0x0C` bytes `(offset, size, name_offset)`; los packs sin nombre utilizan entradas de `0x08` bytes `(offset, size)`. Los miembros `.gz` son flujos gzip normales; `.gzx` añade un prefijo de 32 bits con el tamaño descomprimido antes de los datos gzip.
 
-Zero-sized entries and original table positions must be preserved when rebuilding.
+Las entradas de tamaño cero y las posiciones originales de las tablas deben conservarse al reconstruir los archivos.
 
-## Dialogue blocks
+## Bloques de diálogo
 
-A dialogue file begins with a 32-bit block count followed by entries containing a 16-bit ID, 16-bit block length, and 32-bit block offset.
+Un archivo de diálogo comienza con un contador de bloques de 32 bits, seguido de entradas que contienen un ID de 16 bits, la longitud del bloque en 16 bits y un offset de bloque de 32 bits.
 
-Each block starts with an element count and an offset table. In the public parsers used as the basis for this project, entries from index 3 onward alternate between ASCII key/name data and 16-bit text streams:
+Cada bloque comienza con un contador de elementos y una tabla de offsets. En los parsers públicos utilizados como base para este proyecto, las entradas a partir del índice 3 alternan entre claves/nombres ASCII y flujos de texto de 16 bits:
 
 ```text
-3 key, 4 text, 5 key, 6 text, ...
+3 clave, 4 texto, 5 clave, 6 texto, ...
 ```
 
-The bilingual builder keeps the exact raw stream beside every decoded representation so control words and terminators are never reconstructed from text.
+El generador bilingüe conserva el flujo binario exacto junto a cada representación decodificada, de modo que los códigos de control y terminadores nunca se reconstruyen a partir del texto.
 
-## Text words
+## Palabras de texto
 
-Words are little-endian `u16` values. Controls required by the current pipeline include:
+Las palabras son valores `u16` little-endian. Los controles utilizados por el pipeline actual incluyen:
 
-| Word | Meaning / rule |
+| Palabra | Significado / regla |
 | ---: | --- |
-| `0x8000` | normal text terminator; preserve exactly |
-| `0xFFFF` | alternate terminator; preserve exactly |
-| `0x8001` | newline |
-| `0x8002` | page/pause control; consumes the following argument |
-| `0x0000` | segment/page guard or context-dependent boundary; never discard blindly |
+| `0x8000` | terminador normal de texto; conservar exactamente |
+| `0xFFFF` | terminador alternativo; conservar exactamente |
+| `0x8001` | salto de línea |
+| `0x8002` | control de página/pausa; consume el argumento siguiente |
+| `0x0000` | separación de segmento, guard de página o límite dependiente del contexto; no descartarlo a ciegas |
 
-The verified multi-page sequence is:
+La secuencia multipágina verificada es:
 
 ```text
-0x8002, argument, 0x0000, first word of next page, ...
+0x8002, argumento, 0x0000, primera palabra de la página siguiente, ...
 ```
 
-Removing that zero can drop the first visible character of the following page. Page boundaries are therefore parsed from the enclosing element and control sequence rather than by treating every zero as a C-string terminator.
+Eliminar ese cero puede hacer desaparecer el primer carácter visible de la página siguiente. Por ello, los límites de página se interpretan mediante el elemento contenedor y la secuencia de controles, no tratando cada cero como un terminador de cadena C.
 
-## Font atlases
+## Atlas de fuentes
 
-Character codes index 16x16 glyph tiles across 512x512 4-bpp PIM2 sheets:
+Los códigos de caracteres indexan tiles de glifos de 16x16 dentro de hojas PIM2 de 512x512 y 4 bpp:
 
 ```text
 atlas_index = code // 1024
@@ -71,12 +71,12 @@ tile_x      = (tile_index % 32) * 16
 tile_y      = (tile_index // 32) * 16
 ```
 
-The PIM2 pixel data is PSP-swizzled. The JP and ES atlases are extracted from their respective game images during the local build; the runtime plugin swaps the appropriate atlas instead of assuming one edition's code table applies to the other.
+Los píxeles PIM2 utilizan el swizzling de PSP. Durante la compilación local se extraen los atlas JP y ES de sus respectivas imágenes del juego; el plugin intercambia el atlas adecuado en runtime en lugar de asumir que la tabla de códigos de una edición sirve para la otra.
 
-## Runtime mapping rules
+## Reglas de mapeo en runtime
 
-The offline builder pairs JP and ES records by structural identity and stores their exact raw streams in an immutable blob. It also records context needed to reject ambiguous ES signatures and page-count mismatches.
+El generador offline empareja los registros JP y ES por identidad estructural y guarda sus flujos binarios exactos en un blob inmutable. También conserva el contexto necesario para rechazar firmas ES ambiguas y diferencias incompatibles en el número de páginas.
 
-At runtime the verified dialogue hook resolves the current ES record. Japanese mode substitutes the corresponding JP page ordinal, restores the JP atlas, and uses the original fixed 16-pixel advance. If the record is unresolved, ambiguous, or page-incompatible, the plugin stays in or falls back to Spanish.
+En runtime, el hook de diálogo verificado resuelve el registro ES actual. El modo japonés sustituye el ordinal de página correspondiente en JP, restaura el atlas japonés y utiliza el avance fijo original de 16 píxeles. Si el registro no puede resolverse, es ambiguo o tiene una paginación incompatible, el plugin permanece en español o vuelve a él.
 
-These rules deliberately prefer a missed toggle over corrupt text, wrong-record substitution, or mixed renderer state.
+Estas reglas prefieren deliberadamente perder un cambio puntual de idioma antes que mostrar texto corrupto, sustituir el registro equivocado o mezclar estados de renderizado incompatibles.
