@@ -4,15 +4,16 @@
 
 1. Install Git and Python 3.10 or newer.
 2. Clone the repository.
-3. Copy your clean Japanese `UCJS10038` ISO to
-   `input/jp/Boku_JP.iso`.
+3. Copy your clean Japanese `UCJS10038` ISO to `input/jp/Boku_JP.iso` and your
+   independently patched GriffithVIII/TraduSquare Spanish v1.0 ISO to
+   `input/es/Boku_ES.iso`.
 4. Run `install.bat` and wait for all stages to complete.
-5. Run `launch-dev.bat` to start the generated Spanish ISO in the audited
+5. Run `launch-dev.bat` to start the supplied Spanish ISO in the audited
    portable PPSSPP 1.20.4 build.
 
-`install.bat` performs the bootstrap, local Spanish-patch application,
-extraction/analysis pipeline, and PRX build. It does not modify the Japanese
-source image.
+`install.bat` validates both supplied images, bootstraps development
+dependencies, runs the extraction/analysis pipeline, and builds the PRX. It
+does not download the Spanish patch or modify either image.
 
 ## Playing
 
@@ -47,9 +48,10 @@ Reverse-engineering utilities remain available as Python modules under
 
 ### The ISO is rejected during setup
 
-Confirm that it is the clean Japanese `UCJS10038` release and that its MD5 is
-`B4D363D59CB87E25AB76AFC5384CCA31`. Prepatched or modified images are not
-supported as the source.
+Confirm that the Japanese image is clean `UCJS10038` with MD5
+`B4D363D59CB87E25AB76AFC5384CCA31`, and that the Spanish image is the official
+v1.0 patched build with SHA-256
+`3F3ED57C390684F774432B689EA94DF9C0EA5641D2ED907A3EE03BF1F69EE9C8`.
 
 ### F7 does nothing
 

@@ -31,12 +31,10 @@ function Warn-IfUnexpectedRevision([string]$Path, [string]$Expected) {
     }
 }
 
-$spanishCommit = 'c0e3d2d5417013e4f4b34e416b58743f7efd86ad'
 $koreanCommit = '97d0b30391ccfd44764863b1873f7d0a68246c96'
 $pleonexCommit = 'dae1215b13ca7dbc6fa17971ecd3d58de86b097a'
 $ppssppCommit = 'fa50bb1976065c4f8b1b47af227d367fe9771555'
 
-Ensure-Repo 'https://github.com/GriffithVIII/Boku-no-Natsuyasumi-ESP.git' (Join-Path $root 'external/boku-spanish') 'v1.0'
 Ensure-Repo 'https://github.com/snake7594/boku-natsu-portable-kr-patch.git' (Join-Path $root 'external/boku-korean-tools') 'v0.1.3-image-kr'
 # The useful GriffithVIII table/font commits are public but no branch points to
 # them. Fetch the audited commit directly instead of silently cloning the 2015
@@ -51,23 +49,11 @@ if (-not (Test-Path -LiteralPath (Join-Path $root 'external/ppsspp-source/.git')
     & git -C (Join-Path $root 'external/ppsspp-source') sparse-checkout set Core HLE Windows UI docs scripts
 }
 
-Warn-IfUnexpectedRevision (Join-Path $root 'external/boku-spanish') $spanishCommit
 Warn-IfUnexpectedRevision (Join-Path $root 'external/boku-korean-tools') $koreanCommit
 Warn-IfUnexpectedRevision (Join-Path $root 'external/boku-pleonex') $pleonexCommit
 Warn-IfUnexpectedRevision (Join-Path $root 'external/ppsspp-source') $ppssppCommit
 
 if (-not $SkipDownloads) {
-    $patchArchive = Join-Path $root 'input/es/patch/bokuES-v1.0.rar'
-    if (-not (Test-Path -LiteralPath $patchArchive)) {
-        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $patchArchive) | Out-Null
-        Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/GriffithVIII/Boku-no-Natsuyasumi-ESP/releases/download/v1.0/bokuES-v1.0.rar' -OutFile $patchArchive
-    }
-    $xdelta = Join-Path $root 'input/es/patch/bokuES-v1.0/patch/bokuES-v1.0.xdelta'
-    if (-not (Test-Path -LiteralPath $xdelta)) {
-        tar -xf $patchArchive -C (Split-Path -Parent $patchArchive)
-        if ($LASTEXITCODE -ne 0) { throw 'Spanish patch archive extraction failed' }
-    }
-
     $ppssppZip = Join-Path $root 'external/ppsspp-bin/PPSSPP-v1.20.4-Windows-x64.zip'
     $ppssppExe = Join-Path $root 'external/ppsspp-bin/portable/PPSSPPWindows64.exe'
     if (-not (Test-Path -LiteralPath $ppssppZip)) {

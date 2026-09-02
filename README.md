@@ -43,16 +43,16 @@ project.
 ## Quick start
 
 1. Clone this repository.
-2. Put the clean Japanese ISO at
-   `input/jp/Boku_JP.iso`. See [input/README.md](input/README.md).
-3. Run `install.bat`. It downloads dependencies, applies the public Spanish
-   v1.0 patch locally, extracts the required data, and builds the plugin.
+2. Put the clean Japanese ISO at `input/jp/Boku_JP.iso` and your independently
+   patched Spanish v1.0 ISO at `input/es/Boku_ES.iso`. See
+   [input/README.md](input/README.md).
+3. Run `install.bat`. It validates both images, downloads only development
+   dependencies, extracts the required local data, and builds the plugin.
 4. Run `launch-dev.bat`.
 5. Once gameplay dialogue is visible, press **F7** to switch languages.
 
-Neither input ISO is modified in place. The generated Spanish image is written
-to `input/es/Boku_ES.iso`; all generated or copyrighted material is ignored by
-Git.
+Neither input ISO is modified in place. All generated or copyrighted material
+is derived locally from those two images and ignored by Git.
 
 For manual commands, troubleshooting, savestate rules, and logs, read the
 [user guide](docs/USER_GUIDE.md).

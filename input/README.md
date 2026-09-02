@@ -11,8 +11,10 @@ input/
 |-- jp/
 |   `-- Boku_JP.iso       # user-supplied clean UCJS10038 image
 `-- es/
-    `-- Boku_ES.iso       # generated locally by scripts/setup.ps1
+    `-- Boku_ES.iso       # user-supplied Spanish v1.0 patched image
 ```
 
-Do not rename these files unless you also pass the corresponding explicit
-path to the PowerShell scripts.
+The project does not download or redistribute the Spanish patch. Obtain it
+from its official project, apply it independently to your own clean dump, and
+then provide the resulting ISO here. Do not rename these files unless you pass
+explicit `-JpIso` and `-EsIso` paths to `scripts/setup.ps1`.

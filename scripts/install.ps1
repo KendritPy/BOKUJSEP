@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 Write-Host '==> Bootstrap dependencies' -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot 'bootstrap.ps1')
 
-Write-Host '==> Create local Spanish runtime ISO' -ForegroundColor Cyan
+Write-Host '==> Validate user-supplied Japanese and Spanish ISOs' -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot 'setup.ps1')
 
 Write-Host '==> Extract and build runtime data' -ForegroundColor Cyan
