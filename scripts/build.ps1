@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $vsmake = Join-Path $root 'external/pspmodbase/external/pspsdk/vsmake.ps1'
 $python = Join-Path $root '.venv/Scripts/python.exe'
