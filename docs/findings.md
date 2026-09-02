@@ -96,6 +96,49 @@ boundary between confirmed facts and inference.
   finding the writer because it stops before executing the store with the
   writer PC and pre-store registers intact.
 - `probe-watch-glyph.bat` now watches the exact 2-byte halfword at `0x0892EBA4`, which is proven by the corrected targeted differential to change between the two tested textboxes. The goal is to catch the actual CPU instruction that updates line-dependent renderer/layout data and then trace backward toward the text parser.
+- The non-pausing interpreter trace finally captured that writer reliably. At
+  `0x088A0E4C`, `z_un_088a0ccc` executes `sh v1,0x174(v0)` with
+  `v0=0x0892EA30` and `v1=0x0053`, exactly producing address `0x0892EBA4` and
+  the observed after-value. The surrounding function calculates fixed-point
+  transformed values and stores adjacent halfword coordinates plus render
+  flags. Its callers are at `0x088A1150` and `0x088A1328`. This conclusively
+  classifies the seed as renderer geometry, not a dialogue parser, lookup, or
+  durable current-line identity. Do not trace or hook it further.
+- LunaTranslator 0.16.5.4 was attached to PPSSPP before game load and correctly
+  recognized PPSSPP 1.20.4 plus `UCJS10038`. Its built-in hooks produced no
+  text stream. A default hook search created 3,959 active candidates and 1,676
+  results after one controlled textbox transition, but only resource/glyph
+  noise; neither `Muy bien` nor `Boku` appeared even after disabling the
+  pure-English/unordered filters. Luna is rejected for this patched executable's
+  whole-dialogue discovery path.
+- The clean executable comparison is now authoritative: Spanish `EBOOT.BIN`
+  and Japanese `BOOT.BIN` are decrypted ELFs of the same size. The Spanish ISO
+  leaves its `BOOT.BIN` byte-identical to Japanese and replaces `EBOOT.BIN`.
+  The patch converts the original non-alloc `.comment` payload into a writable,
+  allocatable, executable `0x7F00`-byte region at module offsets
+  `0x00114FF0..0x0011CEF0` (guest `0x08918FF0..0x08920EF0`), shifts `.data` by
+  `0x7F00`, changes 1,436 `.text` bytes / 562 instruction words, and introduces
+  seven direct branches from original `.text` into the injected region.
+- The strongest static injected edge is guest `0x08843074 -> 0x08919BF0`. Immediately
+  before it, `0x08843070` executes `move a0,s3`. The injected function reads
+  16-bit words from that pointer, recognizes `0x8000`, and walks/counts the raw
+  stream. Although this matches the established serialization, a verified
+  log-only breakpoint at this site did not execute during one controlled
+  textbox transition. A second probe signature-checked and watched all seven
+  original-text edges into the injected region; none executed during the next
+  transition. A self-test at the active renderer writer produced a JIT CPU-log
+  event immediately, proving that CPU logpoints work in the current emulator
+  session. Therefore the injected edges are rejected for this scene's active
+  dialogue path rather than blamed on debugger transport.
+- Correcting normalization for the Spanish patch's reused U+300C separator
+  located the canonical visible records precisely. `Muy bien, Boku. Has
+  acertado!` is ES record 4978 (also structural duplicates 5017/5038/8093),
+  `G2a.bin`, `M_G01200.bin.gz`, dialog 4028, block 35, element 4, key
+  `0122_12`. `La cena que he preparado hoy era:` is record 4993 (plus three
+  duplicates), the same script/dialog and key `0122_09`. Neither exact raw
+  stream nor several 16-24 byte interior windows were resident in the current
+  32 MiB RAM snapshot after the scene had advanced, so tracing must be armed
+  against the textbox actually visible rather than an older screenshot.
 - JIT memcheck register snapshots contained many `0xDEADBEEF` values. Future memory-breakpoint work should use PPSSPP interpreter mode (`launch-debug.bat`) for reliable registers/memchecks.
 - The old launcher passed unsupported `--cpu=interpreter`. PPSSPP 1.20.4's
   desktop parser selects the interpreter with `-i`; `launch-debug.bat` now

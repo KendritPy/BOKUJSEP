@@ -20,6 +20,10 @@ CHUNK_SIZE = 0x00100000
 
 def normalize_text(value: str) -> str:
     value = unicodedata.normalize("NFKC", value or "")
+    value = "".join(
+        " " if unicodedata.category(char)[0] in {"P", "Z"} else char
+        for char in value
+    )
     value = value.replace("\r", " ").replace("\n", " ")
     return " ".join(value.split()).casefold()
 

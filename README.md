@@ -56,7 +56,19 @@ The current PRX is the safe milestone-zero loader/input build. Dialogue hooks
 remain deliberately disabled until the user's exact Spanish EBOOT signature
 and runtime text path have been measured.
 
+`tools/compare_eboot.py` performs the reproducible section-aware comparison of
+the decrypted Japanese `BOOT.BIN` and Spanish `EBOOT.BIN`. Its report is written
+to `analysis/diffs/eboot_diff.json`. `probe-stream.bat` validates the current
+best Spanish raw-stream call signature and captures the pointed 16-bit stream
+without pausing PPSSPP.
+
 For development, `launch-dev.bat` deploys the current PRX, starts the project
 PPSSPP build with the Spanish ISO, waits for its debugger service, and starts
 the F7 bridge automatically. `build.bat` and `install.bat` avoid local
 PowerShell execution-policy issues.
+
+For temporary LunaTranslator hook discovery, use `launch-luna.bat`. It starts
+PPSSPP without loading a game so Luna can attach to the emulator first. After
+Luna reports a successful PPSSPP connection, load `input/es/Boku_ES.iso`
+through PPSSPP's **File > Load** menu. Luna remains discovery-only and is not a
+dependency of the final PRX.

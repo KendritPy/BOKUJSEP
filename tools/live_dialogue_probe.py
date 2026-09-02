@@ -103,6 +103,13 @@ def candidate_windows(raw: bytes, width_words: int = 4) -> list[tuple[int, bytes
 def normalize_text(value: str) -> str:
     value = TOKEN_RE.sub(" ", value or "")
     value = unicodedata.normalize("NFKC", value)
+    # The Spanish patch uses the original JP table's U+300C glyph as its word
+    # separator.  Treat Unicode punctuation/separators as spaces so readable
+    # Spanish phrases remain searchable despite that provisional table.
+    value = "".join(
+        " " if unicodedata.category(char)[0] in {"P", "Z"} else char
+        for char in value
+    )
     value = value.replace("\r", " ").replace("\n", " ")
     return " ".join(value.split()).casefold()
 

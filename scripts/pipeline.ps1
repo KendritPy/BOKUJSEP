@@ -20,8 +20,10 @@ function Invoke-PythonStage([string]$Name, [string]$Script, [string[]]$Arguments
 Invoke-PythonStage 'Extract JP ISO/CDIMG' 'tools/extract_game.py' (@('--iso', $jp, '--edition', 'jp') + $forceArg)
 Invoke-PythonStage 'Extract ES ISO/CDIMG' 'tools/extract_game.py' (@('--iso', $es, '--edition', 'es') + $forceArg)
 Invoke-PythonStage 'Compare extracted files' 'tools/compare_files.py'
+Invoke-PythonStage 'Compare JP/ES executable ELFs' 'tools/compare_eboot.py'
 Invoke-PythonStage 'Extract JP dialogue' 'tools/extract_dialogue.py' @('--edition', 'jp')
 Invoke-PythonStage 'Extract ES dialogue' 'tools/extract_dialogue.py' @('--edition', 'es')
 Invoke-PythonStage 'Map JP/ES dialogue' 'tools/compare_scripts.py'
+Invoke-PythonStage 'Build immutable bilingual dialogue blob' 'tools/build_dialogue_blob.py'
 Invoke-PythonStage 'Audit font coverage' 'tools/font_coverage.py'
 Write-Host 'Extraction and structural analysis complete.' -ForegroundColor Green

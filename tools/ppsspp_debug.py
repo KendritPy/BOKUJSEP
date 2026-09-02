@@ -28,7 +28,17 @@ class PPSSPPDebugger:
         # PPSSPP 1.20.4 calls this broadcast.config.set (not
         # client.config.set.)  Explicitly keep stepping broadcasts enabled;
         # memory-breakpoint hits are reported through cpu.stepping in 1.20.4.
-        self.request("broadcast.config.set", disallowed={"stepping": False})
+        # High-rate analog input broadcasts share this socket and can crowd out
+        # the brief debugger events a writer probe needs.
+        self.request(
+            "broadcast.config.set",
+            disallowed={
+                "stepping": False,
+                "logger": False,
+                "input": True,
+                "game": True,
+            },
+        )
 
     def close(self) -> None:
         self.ws.close()

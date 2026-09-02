@@ -67,7 +67,12 @@ class PPSSPPDebuggerTests(unittest.TestCase):
             {
                 "event": "broadcast.config.set",
                 "ticket": 2,
-                "disallowed": {"stepping": False},
+                "disallowed": {
+                    "stepping": False,
+                    "logger": False,
+                    "input": True,
+                    "game": True,
+                },
             },
         )
         debugger.close()

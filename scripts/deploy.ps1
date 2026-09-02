@@ -6,7 +6,7 @@ $source = Join-Path $root 'dist/BokuLangToggle'
 if (-not (Test-Path -LiteralPath (Join-Path $source 'BokuLangToggle.prx'))) { & (Join-Path $PSScriptRoot 'build.ps1') }
 $target = Join-Path $Memstick 'PSP/PLUGINS/BokuLangToggle'
 New-Item -ItemType Directory -Force -Path $target | Out-Null
-foreach ($name in @('BokuLangToggle.prx', 'plugin.ini', 'BokuLangToggle.ini')) {
+foreach ($name in @('BokuLangToggle.prx', 'plugin.ini', 'BokuLangToggle.ini', 'dialogue_blob.bin', 'jp_atlas0.pim', 'es_atlas0.pim')) {
     $destination = Join-Path $target $name
     if (Test-Path -LiteralPath $destination) { Copy-Item -Force -LiteralPath $destination -Destination "$destination.bak" }
     Copy-Item -Force -LiteralPath (Join-Path $source $name) -Destination $destination
