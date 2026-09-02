@@ -1,15 +1,15 @@
 $ErrorActionPreference = 'Stop'
 
-Write-Host '==> Bootstrap dependencies' -ForegroundColor Cyan
+Write-Host '==> Preparando dependencias' -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot 'bootstrap.ps1')
 
-Write-Host '==> Validate user-supplied Japanese and Spanish ISOs' -ForegroundColor Cyan
+Write-Host '==> Verificando las ISOs japonesa y española aportadas por el usuario' -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot 'setup.ps1')
 
-Write-Host '==> Extract and build runtime data' -ForegroundColor Cyan
+Write-Host '==> Extrayendo y generando los datos de runtime' -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot 'pipeline.ps1')
 
-Write-Host '==> Build BokuLangToggle' -ForegroundColor Cyan
+Write-Host '==> Compilando BokuLangToggle' -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot 'build.ps1')
 
-Write-Host 'Installation complete. Run launch.bat to play.' -ForegroundColor Green
+Write-Host 'Instalación completada. Ejecuta launch.bat para jugar.' -ForegroundColor Green
