@@ -1,4 +1,4 @@
-param([switch]$SkipDownloads)
+﻿param([switch]$SkipDownloads)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
