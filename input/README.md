@@ -1,20 +1,17 @@
-# Local game images
+# Imágenes locales del juego
 
-This directory is intentionally committed without game data. Supply your own
-legally obtained images locally; ISO files and downloaded patch material are
-ignored by Git.
+Este directorio se incluye sin datos del juego. Debes aportar localmente tus propias imágenes; las ISOs y el material descargado del parche están ignorados por Git.
 
-Expected layout:
+Estructura esperada:
 
 ```text
 input/
 |-- jp/
-|   `-- Boku_JP.iso       # user-supplied clean UCJS10038 image
+|   `-- Boku_JP.iso       # ISO japonesa limpia UCJS10038 aportada por el usuario
 `-- es/
-    `-- Boku_ES.iso       # user-supplied Spanish v1.0 patched image
+    `-- Boku_ES.iso       # ISO parcheada con la traducción española v1.0
 ```
 
-The project does not download or redistribute the Spanish patch. Obtain it
-from its official project, apply it independently to your own clean dump, and
-then provide the resulting ISO here. Do not rename these files unless you pass
-explicit `-JpIso` and `-EsIso` paths to `scripts/setup.ps1`.
+El proyecto no descarga ni redistribuye el parche español. Obtén la traducción desde su [página oficial de TraduSquare](https://tradusquare.es/proyectos/boku-no-natsuyasumi/), aplícala a una copia de tu ISO japonesa limpia y coloca aquí la ISO resultante.
+
+No cambies los nombres de estos archivos salvo que pases rutas explícitas mediante `-JpIso` y `-EsIso` a `scripts/setup.ps1`.
