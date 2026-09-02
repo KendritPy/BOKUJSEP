@@ -1,55 +1,56 @@
-# User guide
+# Guía de usuario
 
-## Installation
+## Instalación
 
-1. Install Git and Python 3.10 or newer.
-2. Clone the repository.
-3. Copy a clean Japanese `UCJS10038` ISO to `input/jp/Boku_JP.iso`.
-4. Run `install.bat`.
-5. Run `launch.bat`.
+1. Instala Git y Python 3.10 o superior.
+2. Clona el repositorio.
+3. Coloca una ISO japonesa limpia de `UCJS10038` en `input/jp/Boku_JP.iso`.
+4. Descarga la traducción española v1.0 desde la [página oficial de TraduSquare](https://tradusquare.es/proyectos/boku-no-natsuyasumi/), aplícala a una copia de la ISO japonesa limpia y coloca el resultado en `input/es/Boku_ES.iso`.
+5. Ejecuta `install.bat`.
+6. Ejecuta `launch.bat`.
 
-`install.bat` downloads pinned dependencies, applies the public Spanish v1.0 patch locally, extracts the required data, and builds the plugin. It does not modify the Japanese source image.
+`install.bat` descarga las dependencias fijadas por el proyecto, verifica ambas ISOs, extrae los datos necesarios y compila el plugin. No modifica la ISO japonesa original.
 
-## Playing
+## Uso
 
-- Press **F7** while gameplay dialogue is visible to toggle Japanese/Spanish.
-- Menus and cinematics remain Spanish.
-- Unresolved or incompatible dialogue automatically stays in or falls back to Spanish.
-- The first switch can take slightly longer because runtime assets are loaded lazily.
+- Pulsa **F7** mientras haya un diálogo de juego visible para alternar entre japonés y español.
+- Los menús y las cinemáticas permanecen en español.
+- Los diálogos no resueltos o incompatibles se mantienen en español o vuelven automáticamente a él.
+- El primer cambio puede tardar un poco más porque algunos recursos se cargan de forma diferida.
 
 ## Savestates
 
-PPSSPP savestates include plugin memory. Use a savestate only with the exact same `BokuLangToggle.prx` build that created it. After rebuilding the plugin, boot normally and create a fresh savestate. In-game saves are preferred for long-term progress.
+Los savestates de PPSSPP incluyen la memoria del plugin. Utiliza un savestate únicamente con la misma compilación de `BokuLangToggle.prx` con la que fue creado. Después de recompilar el plugin, inicia el juego normalmente y crea un savestate nuevo. Para progreso a largo plazo, es preferible utilizar los guardados internos del juego.
 
-## Development commands
+## Comandos de desarrollo
 
-| Command | Purpose |
+| Comando | Función |
 | --- | --- |
-| `install.bat` | Complete first-time setup and build |
-| `./scripts/build.ps1` | Rebuild after source changes |
-| `./scripts/deploy.ps1` | Copy the current build into portable PPSSPP |
-| `launch.bat` | Deploy, launch PPSSPP, and enable the F7 bridge |
+| `install.bat` | Preparación y compilación inicial completas |
+| `./scripts/build.ps1` | Recompilar después de cambios en el código |
+| `./scripts/deploy.ps1` | Copiar la compilación actual a PPSSPP portable |
+| `launch.bat` | Desplegar, iniciar PPSSPP y activar el puente de F7 |
 
-## Troubleshooting
+## Solución de problemas
 
-### The ISO is rejected
+### La ISO es rechazada
 
-Use the clean Japanese `UCJS10038` release. Setup expects MD5 `B4D363D59CB87E25AB76AFC5384CCA31`. Prepatched or modified source images are not supported.
+Utiliza la versión japonesa limpia `UCJS10038`. El instalador espera el MD5 `B4D363D59CB87E25AB76AFC5384CCA31`. Para la versión española, utiliza el resultado de aplicar la traducción oficial v1.0 a esa misma imagen limpia.
 
-### F7 does nothing
+### F7 no hace nada
 
-Close PPSSPP completely and restart it with `launch.bat`. The launcher deploys the plugin, configures the audited PPSSPP debugger interface, and starts the host-side hotkey bridge.
+Cierra PPSSPP por completo y vuelve a iniciarlo mediante `launch.bat`. El launcher despliega el plugin, configura la interfaz de depuración de PPSSPP utilizada por el proyecto e inicia el puente de la tecla F7.
 
-### A savestate behaves incorrectly
+### Un savestate se comporta de forma extraña
 
-It was probably created with another plugin build. Restart the game, load an in-game save, and create a new PPSSPP savestate.
+Probablemente fue creado con otra compilación del plugin. Reinicia el juego, carga una partida guardada dentro del juego y crea un nuevo savestate de PPSSPP.
 
 ### Logs
 
-The plugin log is written under:
+El log del plugin se escribe en:
 
 ```text
 external/ppsspp-bin/portable/memstick/PSP/PLUGINS/BokuLangToggle/
 ```
 
-For bug reports, include the PPSSPP version, plugin build hash, reproduction steps, relevant log excerpt, language mode, and a screenshot. Do not attach an ISO, savestate, or extracted copyrighted asset.
+Para reportar un problema, incluye la versión de PPSSPP, el hash de la compilación del plugin, los pasos para reproducirlo, el fragmento relevante del log, el idioma activo y una captura de pantalla.
