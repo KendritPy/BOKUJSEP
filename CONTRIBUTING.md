@@ -1,19 +1,11 @@
-# Contributing
+# Contribuir
 
-Bug reports and focused pull requests are welcome.
+Se agradecen los reportes de errores y los pull requests concretos.
 
-Before submitting a change:
+Antes de enviar un cambio:
 
-1. Do not add game ISOs, extracted assets, translation data, savestates,
-   memory dumps, third-party binaries, or generated build output.
-2. Run `python -m unittest discover -s tests -p "test_*.py"` from the project
-   virtual environment.
-3. Keep executable signatures and safety checks fail-closed. An unknown game
-   revision or dialogue structure must disable/fallback rather than patch an
-   unverified address.
-4. Document new runtime addresses with the game revision, evidence, and a
-   reproducible capture method.
+1. Ejecuta `python -m unittest discover -s tests -p "test_*.py"` desde el entorno virtual del proyecto.
+2. Mantén las comprobaciones de firmas y seguridad en modo fail-closed: una revisión desconocida del juego o una estructura de diálogo no reconocida debe desactivar la modificación o volver al español, nunca parchear una dirección sin verificar.
+3. Documenta cualquier nueva dirección de runtime indicando la revisión del juego, la evidencia y un método reproducible para obtenerla.
 
-Reports should include the PPSSPP version, ISO edition/hash where legally
-shareable, plugin build hash, relevant log excerpt, reproduction steps, and a
-screenshot. Never upload copyrighted game content.
+Los reportes deberían incluir la versión de PPSSPP, la edición/hash de la ISO cuando sea relevante, el hash de la compilación del plugin, el fragmento de log correspondiente, pasos de reproducción y una captura de pantalla.
