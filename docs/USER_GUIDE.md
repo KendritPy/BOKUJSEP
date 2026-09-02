@@ -39,9 +39,9 @@ long-term saves and are not subject to this restriction.
 | `build.bat` | Rebuild the plugin after source changes |
 | `deploy.bat` | Copy the current build into portable PPSSPP |
 | `launch-dev.bat` | Deploy and launch the Spanish runtime with F7 enabled |
-| `launch-debug.bat` | Launch the debugging workflow |
 
-The research-only `probe-*.bat` commands are not needed for normal play.
+Reverse-engineering utilities remain available as Python modules under
+`tools/`; they are intentionally not exposed as normal player launchers.
 
 ## Troubleshooting
 

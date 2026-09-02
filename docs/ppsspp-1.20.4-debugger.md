@@ -164,8 +164,8 @@ memcheck payload, and the newer enriched payload.
 The corrected sequence remains:
 
 ```text
-launch-debug.bat       -> passes -i
-probe-watch-glyph.bat  -> watches 0x0892EBA4, size 2
+scripts/launch-dev.ps1 -Interpreter
+tools/dialogue_watch_event_probe.py --address 0x0892EBA4 --size 2 --log-only
 ```
 
 The probe must show the installed `write=true, change=true` memcheck. A valid

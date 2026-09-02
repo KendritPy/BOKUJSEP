@@ -120,9 +120,9 @@ Cross-check the guest address with this repo. Luna is a hook finder/observable
 text feed, **not proof of in-game write-back**. If it yields only OCR/glyph
 noise, abandon that route and continue B.
 
-Use `launch-luna.bat` for this experiment. It intentionally starts PPSSPP with
-no ISO; attach Luna in HOOK mode first, then load `input/es/Boku_ES.iso` from
-PPSSPP's File > Load menu. The normal `launch-dev.bat` still auto-loads the ISO.
+The historical Luna experiment launched `scripts/launch-dev.ps1 -NoGame`,
+attached Luna in HOOK mode, then loaded `input/es/Boku_ES.iso` from PPSSPP's
+File > Load menu. The normal `launch-dev.bat` still auto-loads the ISO.
 
 This experiment is complete and rejected for whole-dialogue discovery. Luna
 0.16.5.4 recognized PPSSPP 1.20.4 and `UCJS10038`, but built-in hooks were empty;
@@ -132,8 +132,8 @@ visible Spanish line. Do not repeat generic Luna searches or cycle encodings.
 ### B. Completed and rejected writer trace
 
 ```text
-launch-debug.bat
-probe-watch-glyph.bat
+scripts/launch-dev.ps1 -Interpreter
+tools/dialogue_watch_event_probe.py --address 0x0892EBA4 --size 2 --log-only
 ```
 
 This experiment is complete. The eventual non-pausing interpreter log captured
@@ -153,7 +153,7 @@ rapid `cpu.resume` broadcasts and neither a stable stepping event nor a MEMMAP
 log. The earlier log's reason was `CPU`, which is PPSSPP's JIT memcheck path,
 not the interpreter's `interpret` path. `launch-dev.ps1` now refuses to start
 while another PPSSPP process exists; close PPSSPP fully before
-`launch-debug.bat` so a pre-existing JIT instance cannot absorb the launch and
+interpreter mode so a pre-existing JIT instance cannot absorb the launch and
 silently defeat `-i`. Timeout reports now snapshot the final memcheck/hit count.
 
 The next clean-launch run proved the user action and memcheck are valid:
@@ -168,7 +168,7 @@ explicitly enables logger/stepping broadcasts, and records the effective
 With broadcast noise removed, another run changed `0x0031 -> 0x0063` and the
 memcheck rose `0 -> 4`, with exactly four `cpu.resume` broadcasts but still no
 observable stop/log payload. The user action is conclusively correct; do not
-repeat the pausing probe. `probe-watch-glyph.bat` now uses a non-pausing,
+repeat the pausing probe. The glyph-watch command uses a non-pausing,
 register-rich `logFormat` (`BOKU_WATCH`) so the MEMMAP event itself carries PC,
 RA, SP and key GPRs without depending on the broken transient stepping state.
 
@@ -195,7 +195,8 @@ jal  0x08919BF0
 
 The target walks 16-bit words and recognizes the established raw `0x8000`
 terminator, but it is not the active path for the tested dinner dialogue.
-`probe-stream.bat` did not hit for one transition. `probe-injected-edges.bat`
+`tools/dialogue_stream_probe.py` did not hit for one transition.
+`tools/injected_edge_probe.py`
 then signature-checked all seven original-text edges into the injected region
 and none hit for the next transition. A CPU-log self-test at the known active
 renderer writer hit immediately in the same JIT session, so this is a runtime

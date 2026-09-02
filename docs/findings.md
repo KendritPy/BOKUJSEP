@@ -95,7 +95,7 @@ boundary between confirmed facts and inference.
   supported-store value comparison. Interpreter mode is still preferable for
   finding the writer because it stops before executing the store with the
   writer PC and pre-store registers intact.
-- `probe-watch-glyph.bat` now watches the exact 2-byte halfword at `0x0892EBA4`, which is proven by the corrected targeted differential to change between the two tested textboxes. The goal is to catch the actual CPU instruction that updates line-dependent renderer/layout data and then trace backward toward the text parser.
+- `dialogue_watch_event_probe.py` watches the exact 2-byte halfword at `0x0892EBA4`, which is proven by the corrected targeted differential to change between the two tested textboxes. The goal was to catch the actual CPU instruction that updates line-dependent renderer/layout data and then trace backward toward the text parser.
 - The non-pausing interpreter trace finally captured that writer reliably. At
   `0x088A0E4C`, `z_un_088a0ccc` executes `sh v1,0x174(v0)` with
   `v0=0x0892EA30` and `v1=0x0053`, exactly producing address `0x0892EBA4` and
@@ -139,10 +139,10 @@ boundary between confirmed facts and inference.
   stream nor several 16-24 byte interior windows were resident in the current
   32 MiB RAM snapshot after the scene had advanced, so tracing must be armed
   against the textbox actually visible rather than an older screenshot.
-- JIT memcheck register snapshots contained many `0xDEADBEEF` values. Future memory-breakpoint work should use PPSSPP interpreter mode (`launch-debug.bat`) for reliable registers/memchecks.
+- JIT memcheck register snapshots contained many `0xDEADBEEF` values. Future memory-breakpoint work should use `scripts/launch-dev.ps1 -Interpreter` for reliable registers/memchecks.
 - The old launcher passed unsupported `--cpu=interpreter`. PPSSPP 1.20.4's
-  desktop parser selects the interpreter with `-i`; `launch-debug.bat` now
-  reaches that supported path.
+  desktop parser selects the interpreter with `-i`; the launch script's
+  `-Interpreter` switch reaches that supported path.
 
 ## Pending measured results
 

@@ -117,7 +117,9 @@ def main() -> None:
     args = parser.parse_args()
 
     if not args.input.is_file():
-        raise SystemExit(f"missing {args.input}; run probe-stable-diff.bat first")
+        raise SystemExit(
+            f"missing {args.input}; run tools/dialogue_stable_diff_probe.py first"
+        )
     report = json.loads(args.input.read_text(encoding="utf-8"))
     runs = report.get("clean_runs", [])
     if not runs:

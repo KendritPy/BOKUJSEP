@@ -91,3 +91,11 @@ third-party binaries. The project checks the expected clean Japanese ISO MD5
 The original code in this repository is licensed under the [MIT License](LICENSE).
 Downloaded projects and translation materials retain their own licenses and
 copyrights.
+
+## Credits and AI disclosure
+
+The project was led and tested by **KendritPy** with substantial assistance
+from **OpenAI Codex** in reverse-engineering analysis, implementation,
+documentation, and test development. All AI-assisted changes were directed,
+reviewed, and validated by the human maintainer. See
+[CONTRIBUTORS.md](CONTRIBUTORS.md) for the explicit attribution.
