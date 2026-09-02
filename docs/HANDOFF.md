@@ -266,9 +266,13 @@ extracted data. Current ES text decoded through the JP table is not authoritativ
 Prefer whole raw 16-bit stream substitution over per-glyph hooks. Generate an
 immutable bilingual blob offline and retain the Spanish renderer. Any installed
 hook must be edition-specific, signature-checked, bounds-checked and fail closed.
-The current PRX is only milestone-zero loader/input: host F7 -> PPSSPP Note
-button -> guest Note bit -> PRX language-state edge toggle. Dialogue replacement
-is not implemented yet.
+The current PRX implements the complete host F7 -> PPSSPP Note -> guest edge ->
+signature-checked whole-dialogue replacement path. It lazily resolves the live
+Spanish stream against blob v2, swaps the paired Japanese stream/font/width,
+and restores Spanish state on the next toggle. Unresolved or page-count-
+incompatible records refuse Japanese mode or trigger automatic Spanish
+fallback before rendering. The structural map contains 8,539 pairs; menus and
+cinematics intentionally remain Spanish.
 
 ## Do not repeat
 

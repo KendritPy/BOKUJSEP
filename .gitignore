@@ -7,7 +7,16 @@
 /dist/
 /extracted/
 /external/
-/input/
+# User-supplied disc images, downloaded patches, and generated derivatives.
+# Keep the directory instructions visible in fresh clones.
+/input/*
+!/input/README.md
+!/input/jp/
+!/input/es/
+/input/jp/*
+!/input/jp/README.md
+/input/es/*
+!/input/es/README.md
 /jp/
 /es/
 /logs/

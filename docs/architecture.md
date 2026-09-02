@@ -1,6 +1,6 @@
 # Architecture
 
-The working hypothesis is a PPSSPP-compatible userspace PRX loaded only for
+The implementation is a PPSSPP-compatible userspace PRX loaded only for
 `UCJS10038`, running on the Spanish v1.0 executable. A persistent immutable
 bilingual blob will map a measured structural dialogue identity to the exact
 raw JP or ES 16-bit word stream. Substitution will occur at the narrowest
@@ -19,10 +19,9 @@ fork: `F7 -> WebSocket input.buttons.press(note) -> sceCtrl guest state -> PRX
 edge detector -> ToggleLanguage()`. The PSP Note bit is included in PPSSPP's
 user input mask and is not a gameplay control used by Boku.
 
-The milestone-zero PRX only logs startup and toggles internal state. Hook
-installation is disabled until the Spanish EBOOT hash and instruction bytes
-are known. Any future hook must verify its surrounding signature and fail
-closed when it does not match.
+The shipping PRX validates the Spanish EBOOT instruction signature, installs
+the dialogue wrapper lazily on the first F7 edge, and keeps the Spanish path
+unchanged until Japanese mode is requested. Unknown revisions fail closed.
 
 The first reversible mixed-mode proof established the required render state:
 Japanese mode swaps the original atlas 0 and uses the original raw JP stream,
@@ -62,6 +61,7 @@ atlas and proportional-width instruction before drawing it, changes the global
 mode back to ES, and logs the automatic fallback. Never render an ES stream
 under the JP atlas.
 
-The present runtime trace starts from the line-dependent renderer halfword at
-`0x0892EBA4` and walks backward to a parser/lookup boundary. That halfword is
-evidence for a writer path, not the proposed hook or a dialogue identity.
+The historical runtime trace started from the line-dependent renderer halfword
+at `0x0892EBA4`; later experiments established the whole-stream wrapper and
+structural resolver described above. The renderer address remains evidence,
+not a durable dialogue identity.

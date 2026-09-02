@@ -1,74 +1,93 @@
 # BokuLangToggle
 
-Runtime Japanese/Spanish language-toggle research and PPSSPP plugin for
-**Boku no Natsuyasumi Portable** (`UCJS10038`). The intended runtime base is
-the GriffithVIII/TraduSquare Spanish v1.0 patched ISO so its horizontal text,
-VWF, layout improvements, graphics, and added subtitle support remain intact.
+BokuLangToggle is an experimental PPSSPP plugin that switches dialogue in
+**Boku no Natsuyasumi Portable** (`UCJS10038`) between the original Japanese
+and the GriffithVIII/TraduSquare Spanish v1.0 translation while the game is
+running.
 
-**New agents should start with [docs/HANDOFF.md](docs/HANDOFF.md).** It records
-the audited source revisions, current runtime boundary, rejected leads, exact
-next experiment, and which facts remain unknown. The static format and public
-translation-tool lineage are documented separately in
-[docs/boku-dialogue-format.md](docs/boku-dialogue-format.md) and
-[docs/spanish-patch-archaeology.md](docs/spanish-patch-archaeology.md). The
-last-pass adoption survey for live hook tools is
-[docs/runtime-tool-survey.md](docs/runtime-tool-survey.md); its recommendation
-is LunaTranslator for discovery, followed by the existing PSPModBase PRX for
-the shipped toggle.
+Press **F7** during a supported dialogue box to toggle languages. Japanese
+mode restores the paired original text, Japanese font atlas, and fixed-width
+layout; Spanish mode restores the translated text and proportional layout.
+If a dialogue record cannot be paired safely, the plugin refuses the switch or
+automatically falls back to Spanish.
 
-This repository never modifies an input ISO in place. Generated game data and
-copyrighted assets stay under ignored local directories. 
+This repository contains source code and reproducible research tooling only.
+It does **not** contain either game ISO, extracted game assets, Sony software,
+or the Spanish translation patch.
 
-## Current development baseline
+## What works
 
-- PPSSPP 1.20.4 portable and exact source tag, not a newer `master` snapshot.
-- Spanish patch `bokuES-v1.0.xdelta` from the official v1.0 release.
-- `snake7594/boku-natsu-portable-kr-patch` v0.1.3 for the current
-  CDIMG/dialogue/PIM2 pipeline and fixed-slot evidence.
-- `pleonex/Boku-no-Natsuyasumi` at GriffithVIII's public `dae1215...` commit,
-  which includes the non-default Yarhl/PO rewrite, extended table, and second
-  font sheet.
-- `xan1242/PSPModBase` plus its bundled Windows PSPSDK for PRX builds.
+- Runtime Japanese/Spanish switching for mapped gameplay dialogue.
+- 8,539 structurally paired dialogue records.
+- Automatic Spanish fallback for unresolved or page-incompatible records.
+- PPSSPP 1.20.4 startup, plugin deployment, debugger configuration, and F7
+  bridge through one launcher.
+- Savestate recovery when the state was made with the same plugin build.
 
-## One-time local setup
+Menus remain those of the Spanish translation. Cinematics remain Spanish.
+Japanese menu restoration was tested and rejected because menu resources share
+font/layout state with the dialogue renderer and produced unsafe mixed states.
 
-Place a legally obtained clean Japanese ISO at `input/jp/Boku_JP.iso`, then run:
+## Requirements
+
+- Windows 10 or 11
+- Git and PowerShell 5.1 or newer
+- Python 3.10 or newer
+- A legally obtained clean Japanese `UCJS10038` ISO
+- Internet access for the one-time dependency bootstrap
+
+The audited emulator target is **PPSSPP 1.20.4 x64**. The bootstrap script
+downloads a portable copy and the exact source/tool revisions used by the
+project.
+
+## Quick start
+
+1. Clone this repository.
+2. Put the clean Japanese ISO at
+   `input/jp/Boku_JP.iso`. See [input/README.md](input/README.md).
+3. Run `install.bat`. It downloads dependencies, applies the public Spanish
+   v1.0 patch locally, extracts the required data, and builds the plugin.
+4. Run `launch-dev.bat`.
+5. Once gameplay dialogue is visible, press **F7** to switch languages.
+
+Neither input ISO is modified in place. The generated Spanish image is written
+to `input/es/Boku_ES.iso`; all generated or copyrighted material is ignored by
+Git.
+
+For manual commands, troubleshooting, savestate rules, and logs, read the
+[user guide](docs/USER_GUIDE.md).
+
+## Development
+
+The build is split into reproducible stages:
 
 ```powershell
+./scripts/bootstrap.ps1
 ./scripts/setup.ps1
 ./scripts/pipeline.ps1
 ./scripts/build.ps1
 ./scripts/deploy.ps1
 ```
 
-The setup script hashes the clean ISO, validates it against the known retail
-MD5 when possible, and creates `input/es/Boku_ES.iso` with the official xdelta
-patch. The pipeline extracts both filesystems and CDIMG archives, emits file
-diffs and structured dialogue, and builds the first structural bilingual map.
+Run the tests with:
 
-`tools/ppsspp_debug.py` talks to the exact PPSSPP 1.20.4 debugger protocol. Its
-`hotkey` command turns one host F7 press into the otherwise-unused PSP Note
-button; the PRX edge-detects that guest button and toggles exactly once. F7 is
-not part of PPSSPP's default PSP or emulator hotkey map (unlike F12, which opens
-the debugger). F5 and F6 are also available as explicit helper alternatives.
+```powershell
+./.venv/Scripts/python.exe -m unittest discover -s tests -p "test_*.py"
+```
 
-The current PRX is the safe milestone-zero loader/input build. Dialogue hooks
-remain deliberately disabled until the user's exact Spanish EBOOT signature
-and runtime text path have been measured.
+Architecture and reverse-engineering evidence are documented in
+[docs/architecture.md](docs/architecture.md),
+[docs/boku-dialogue-format.md](docs/boku-dialogue-format.md), and
+[docs/findings.md](docs/findings.md). The detailed research trail is retained
+in [docs/HANDOFF.md](docs/HANDOFF.md).
 
-`tools/compare_eboot.py` performs the reproducible section-aware comparison of
-the decrypted Japanese `BOOT.BIN` and Spanish `EBOOT.BIN`. Its report is written
-to `analysis/diffs/eboot_diff.json`. `probe-stream.bat` validates the current
-best Spanish raw-stream call signature and captures the pointed 16-bit stream
-without pausing PPSSPP.
+## Legal and safety
 
-For development, `launch-dev.bat` deploys the current PRX, starts the project
-PPSSPP build with the Spanish ISO, waits for its debugger service, and starts
-the F7 bridge automatically. `build.bat` and `install.bat` avoid local
-PowerShell execution-policy issues.
+You must supply your own game dump. Do not commit or publish ISOs, extracted
+assets, generated dialogue/font blobs, logs, memory captures, savestates, or
+third-party binaries. The project checks the expected clean Japanese ISO MD5
+(`B4D363D59CB87E25AB76AFC5384CCA31`) before patching.
 
-For temporary LunaTranslator hook discovery, use `launch-luna.bat`. It starts
-PPSSPP without loading a game so Luna can attach to the emulator first. After
-Luna reports a successful PPSSPP connection, load `input/es/Boku_ES.iso`
-through PPSSPP's **File > Load** menu. Luna remains discovery-only and is not a
-dependency of the final PRX.
+The original code in this repository is licensed under the [MIT License](LICENSE).
+Downloaded projects and translation materials retain their own licenses and
+copyrights.
