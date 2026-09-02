@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Memstick,
     [int]$DebuggerPort = 8765
 )
