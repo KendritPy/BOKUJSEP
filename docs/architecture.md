@@ -1,37 +1,37 @@
-# Architecture
+# Arquitectura
 
-BokuLangToggle is a PPSSPP-compatible userspace PRX for `UCJS10038`. It runs on the Spanish v1.0 executable so the translation's renderer changes remain available, then substitutes the original Japanese dialogue only when requested.
+BokuLangToggle es un PRX de espacio de usuario compatible con PPSSPP para `UCJS10038`. Se ejecuta sobre el EBOOT de la traducción española v1.0 para conservar sus modificaciones de renderizado y sustituye el diálogo por el japonés original únicamente cuando se solicita.
 
-## Offline data
+## Datos generados offline
 
-The build pipeline extracts both editions, identifies dialogue structurally, pairs compatible JP/ES records, and emits a deterministic bilingual blob. Records retain the exact 16-bit word streams and control codes rather than round-tripping through decoded text.
+El pipeline extrae ambas ediciones, identifica los diálogos estructuralmente, empareja registros JP/ES compatibles y genera un blob bilingüe determinista. Los registros conservan los flujos exactos de palabras de 16 bits y sus códigos de control en lugar de reconstruirlos a partir del texto decodificado.
 
-The structural identity is based on the game container hierarchy (script/member/dialog/block/text element/run), not volatile RAM addresses. The blob also stores enough context to reject ambiguous translated streams and page-incompatible pairs.
+La identidad estructural se basa en la jerarquía interna del juego (script/miembro/diálogo/bloque/elemento de texto/segmento), no en direcciones volátiles de RAM. El blob también conserva el contexto necesario para rechazar flujos traducidos ambiguos y pares con paginación incompatible.
 
-## Runtime path
+## Ruta de runtime
 
-Spanish mode follows the translated executable normally. On the first language-toggle request the PRX lazily loads the bilingual data and Japanese atlas, verifies the expected executable signature, and installs the narrow dialogue hook.
+En modo español se utiliza normalmente el ejecutable traducido. Al solicitar por primera vez un cambio de idioma, el PRX carga de forma diferida los datos bilingües y el atlas japonés, verifica la firma esperada del ejecutable e instala el hook de diálogo.
 
-Japanese mode:
+En modo japonés:
 
-1. resolves the currently observed Spanish stream against the bilingual map;
-2. substitutes the paired original Japanese stream;
-3. swaps in the original Japanese font atlas;
-4. changes the translated proportional-width load to the original 16-pixel fixed advance.
+1. resuelve el flujo español actual contra el mapa bilingüe;
+2. lo sustituye por el flujo japonés original emparejado;
+3. coloca el atlas de fuente japonés original;
+4. sustituye el avance proporcional de la traducción por el avance fijo original de 16 píxeles.
 
-Returning to Spanish restores the translated stream, atlas, and proportional layout.
+Al volver al español se restauran el flujo traducido, su atlas y el espaciado proporcional.
 
-Unknown revisions, unresolved records, ambiguous matches, or incompatible pagination fail closed to Spanish. The plugin never intentionally renders a Spanish stream under the Japanese atlas.
+Las revisiones desconocidas, registros no resueltos, coincidencias ambiguas o paginaciones incompatibles vuelven al español. El plugin evita deliberadamente renderizar texto español con el atlas japonés.
 
-## Input bridge
+## Puente de entrada
 
-PPSSPP does not expose the chosen host F7 key directly to the guest. `tools/ppsspp_debug.py` uses PPSSPP's debugger interface to translate the host hotkey into the PSP Note-button bit. The PRX detects that edge and toggles the language. This keeps the implementation compatible with the stock audited PPSSPP build rather than requiring an emulator fork.
+PPSSPP no expone directamente al juego la tecla F7 elegida en el host. `tools/ppsspp_debug.py` utiliza la interfaz de depuración de PPSSPP para traducir esa tecla al bit del botón Note de PSP. El PRX detecta ese flanco y alterna el idioma. Así se mantiene la compatibilidad con la versión estándar de PPSSPP probada por el proyecto, sin requerir un fork del emulador.
 
-## Build layout
+## Estructura del proyecto
 
-- `plugin/` — guest PRX source and configuration.
-- `tools/` — extraction, comparison, bilingual-blob generation, font audit, and PPSSPP debugger bridge.
-- `scripts/` — dependency bootstrap, local patch setup, build, deployment, and launcher automation.
-- `tests/` — deterministic tests for the supported tooling.
+- `plugin/` — código fuente y configuración del PRX ejecutado en PSP.
+- `tools/` — extracción, comparación, generación del blob bilingüe, auditoría de fuentes y puente con el depurador de PPSSPP.
+- `scripts/` — descarga de dependencias, preparación local, compilación, despliegue y automatización del launcher.
+- `tests/` — pruebas deterministas de las herramientas soportadas.
 
-See [boku-dialogue-format.md](boku-dialogue-format.md) for the serialized dialogue format and [findings.md](findings.md) for the verified reverse-engineering results that constrain the implementation.
+Consulta [boku-dialogue-format.md](boku-dialogue-format.md) para el formato serializado de los diálogos y [findings.md](findings.md) para los resultados de ingeniería inversa verificados que condicionan la implementación.
