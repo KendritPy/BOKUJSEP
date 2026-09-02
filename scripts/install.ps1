@@ -12,4 +12,4 @@ Write-Host '==> Extract and build runtime data' -ForegroundColor Cyan
 Write-Host '==> Build BokuLangToggle' -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot 'build.ps1')
 
-Write-Host 'Installation complete. Run launch-dev.bat to play.' -ForegroundColor Green
+Write-Host 'Installation complete. Run launch.bat to play.' -ForegroundColor Green
