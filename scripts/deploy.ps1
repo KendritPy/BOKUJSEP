@@ -11,5 +11,5 @@ foreach ($name in @('BokuLangToggle.prx', 'plugin.ini', 'BokuLangToggle.ini', 'd
     if (Test-Path -LiteralPath $destination) { Copy-Item -Force -LiteralPath $destination -Destination "$destination.bak" }
     Copy-Item -Force -LiteralPath (Join-Path $source $name) -Destination $destination
 }
-Write-Host "Deployed plugin to $target" -ForegroundColor Green
-Write-Host 'Toggle key: F7 (launch-dev starts the bridge automatically).'
+Write-Host "Plugin desplegado en $target" -ForegroundColor Green
+Write-Host 'Tecla para cambiar de idioma: F7 (launch.bat inicia el puente automáticamente).'
