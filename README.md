@@ -1,55 +1,53 @@
 # BokuLangToggle
 
-BokuLangToggle is a PPSSPP plugin for **Boku no Natsuyasumi Portable** (`UCJS10038`) that switches gameplay dialogue between the original Japanese text and the TraduSquare/GriffithVIII Spanish v1.0 translation at runtime.
+BokuLangToggle es un plugin para PPSSPP de **Boku no Natsuyasumi Portable** (`UCJS10038`) que permite alternar en tiempo real los diálogos del juego entre el japonés original y la traducción al español v1.0 de TraduSquare/GriffithVIII.
 
-Press **F7** while a gameplay dialogue box is visible to toggle languages. Japanese mode restores the paired original text, Japanese font atlas, and fixed-width layout; Spanish mode restores the translated text and proportional layout. Menus and cinematics remain Spanish.
+Pulsa **F7** mientras haya un cuadro de diálogo visible para cambiar de idioma. El modo japonés restaura el texto original emparejado, el atlas de fuente japonés y el espaciado fijo; el modo español restaura el texto traducido y el espaciado proporcional. Los menús y las cinemáticas permanecen en español.
 
-The repository contains source code and reproducible build tooling only. It does **not** include game images, extracted game assets, Sony software, or the Spanish translation patch.
+## Estado
 
-## Status
+- Cambio japonés/español en tiempo real para los diálogos de juego compatibles.
+- 8.539 registros de diálogo emparejados estructuralmente.
+- Retorno automático al español cuando un registro no puede resolverse con seguridad o tiene una paginación incompatible.
+- Preparación automatizada del entorno probado: PPSSPP 1.20.4 x64 para Windows.
+- Los savestates funcionan si fueron creados con la misma compilación del plugin; después de recompilar conviene crear uno nuevo.
 
-- Runtime Japanese/Spanish switching for mapped gameplay dialogue.
-- 8,539 structurally paired dialogue records.
-- Automatic Spanish fallback when a record cannot be resolved safely or has incompatible pagination.
-- One-command setup of the audited PPSSPP 1.20.4 Windows x64 environment.
-- Savestates work when created with the same plugin build; rebuilds require a fresh savestate.
+## Requisitos
 
-## Requirements
-
-- Windows 10 or 11
+- Windows 10 u 11
 - Git
-- PowerShell 5.1 or newer
-- Python 3.10 or newer
-- A clean Japanese `UCJS10038` ISO
-- Internet access during the initial setup
+- PowerShell 5.1 o superior
+- Python 3.10 o superior
+- Una ISO japonesa limpia de `UCJS10038`
+- La traducción española v1.0 de TraduSquare/GriffithVIII, descargada desde su [página oficial](https://tradusquare.es/proyectos/boku-no-natsuyasumi/)
+- Acceso a Internet durante la preparación inicial
 
-## Quick start
+## Instalación rápida
 
-1. Clone this repository.
-2. Put your clean Japanese ISO at `input/jp/Boku_JP.iso`.
-3. Run `install.bat`.
-4. Run `launch.bat`.
-5. During gameplay dialogue, press **F7** to switch languages.
+1. Clona este repositorio.
+2. Coloca tu ISO japonesa limpia en `input/jp/Boku_JP.iso`.
+3. Descarga el parche español v1.0 desde la página oficial de TraduSquare, aplícalo a una copia de la misma ISO limpia y coloca el resultado en `input/es/Boku_ES.iso`.
+4. Ejecuta `install.bat`.
+5. Ejecuta `launch.bat`.
+6. Durante un diálogo, pulsa **F7** para cambiar de idioma.
 
-`install.bat` downloads the pinned dependencies, applies the public Spanish v1.0 patch locally, extracts the required data, builds the bilingual mapping, and compiles the plugin. The Japanese source image is never modified in place.
+`install.bat` descarga las dependencias fijadas por el proyecto, verifica ambas ISOs, extrae los datos necesarios, genera el mapa bilingüe y compila el plugin. No modifica la ISO japonesa original.
 
-The generated Spanish image is written to `input/es/Boku_ES.iso`. Generated data, game images, external tools, logs, and build output are ignored by Git.
+Para problemas de instalación y reglas sobre savestates, consulta [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
-For troubleshooting and savestate rules, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+## Cómo funciona
 
-## How it works
+El plugin se ejecuta sobre el EBOOT de la traducción española v1.0 para conservar sus mejoras de renderizado. Las herramientas offline emparejan los diálogos japoneses y españoles por su identidad estructural y generan un blob bilingüe inmutable con los flujos exactos de palabras de 16 bits.
 
-The plugin runs on the Spanish v1.0 executable and keeps its renderer improvements. Offline tooling pairs Japanese and Spanish dialogue by structural identity and builds an immutable bilingual blob from the exact 16-bit word streams.
+En tiempo de ejecución, el PRX intercepta la ruta de diálogo verificada. En modo español deja intacta la ruta normal de la traducción. En modo japonés sustituye el flujo por su original emparejado, coloca el atlas japonés y restaura el avance fijo original de 16 píxeles. Si un registro es desconocido o incompatible, el plugin vuelve al español.
 
-At runtime the PRX intercepts the verified dialogue path. Spanish mode leaves the normal translated path unchanged. Japanese mode substitutes the paired original stream, swaps the original Japanese atlas into place, and restores the original fixed-width 16-pixel advance. Unknown or incompatible records fail closed to Spanish.
+El puente de **F7** utiliza la interfaz de depuración de PPSSPP para convertir la tecla del host en una entrada del botón Note de PSP que el plugin puede detectar. No hace falta una versión modificada de PPSSPP.
 
-The F7 bridge uses PPSSPP's debugger interface to expose an otherwise-unused PSP Note-button input to the guest plugin; no custom PPSSPP build is required.
+Los detalles técnicos están en [docs/architecture.md](docs/architecture.md), [docs/boku-dialogue-format.md](docs/boku-dialogue-format.md) y [docs/findings.md](docs/findings.md).
 
-Technical details are in [docs/architecture.md](docs/architecture.md), [docs/boku-dialogue-format.md](docs/boku-dialogue-format.md), and [docs/findings.md](docs/findings.md).
+## Desarrollo
 
-## Development
-
-The build stages can be run independently:
+Las etapas de compilación pueden ejecutarse por separado:
 
 ```powershell
 ./scripts/bootstrap.ps1
@@ -59,20 +57,18 @@ The build stages can be run independently:
 ./scripts/deploy.ps1
 ```
 
-Run the test suite with:
+Para ejecutar las pruebas:
 
 ```powershell
 ./.venv/Scripts/python.exe -m unittest discover -s tests -p "test_*.py"
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes.
+Consulta [CONTRIBUTING.md](CONTRIBUTING.md) antes de enviar cambios.
 
-## Legal
+## Distribución y créditos
 
-You must supply your own game dump. Do not commit or publish ISOs, extracted assets, generated dialogue/font blobs, memory captures, savestates, or third-party binaries.
+Debes aportar tu propia ISO japonesa y obtener la traducción española desde su fuente oficial. Este repositorio no distribuye el juego ni el parche de traducción.
 
-Setup verifies the expected clean Japanese ISO MD5 (`B4D363D59CB87E25AB76AFC5384CCA31`) before patching.
+El código original de este repositorio se publica bajo la [licencia MIT](LICENSE). La traducción española pertenece a TraduSquare/GriffithVIII y a sus colaboradores acreditados.
 
-The original code in this repository is licensed under the [MIT License](LICENSE). Downloaded projects and translation materials retain their own licenses and copyrights.
-
-The Spanish translation is the work of TraduSquare/GriffithVIII and its credited contributors. BokuLangToggle is an independent compatibility layer and does not redistribute that translation.
+> **Nota:** el proyecto fue desarrollado con asistencia extensiva de IA, principalmente OpenAI Codex, bajo dirección, revisión y pruebas humanas.
