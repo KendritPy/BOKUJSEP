@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 Write-Host '==> Preparando dependencias' -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot 'bootstrap.ps1')
