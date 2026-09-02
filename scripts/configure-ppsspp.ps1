@@ -3,7 +3,7 @@ param(
     [int]$DebuggerPort = 8765
 )
 $ErrorActionPreference = 'Stop'
-if (-not $Memstick) { throw '-Memstick is required' }
+if (-not $Memstick) { throw 'El parámetro -Memstick es obligatorio' }
 $system = Join-Path $Memstick 'PSP/SYSTEM'
 $config = Join-Path $system 'ppsspp.ini'
 New-Item -ItemType Directory -Force -Path $system | Out-Null
@@ -41,4 +41,4 @@ Set-GeneralValue 'RemoteISOPort' ([string]$DebuggerPort)
 Set-GeneralValue 'RemoteDebuggerOnStartup' 'True'
 Set-GeneralValue 'RemoteDebuggerLocal' 'True'
 [IO.File]::WriteAllLines($config, $lines, [Text.UTF8Encoding]::new($false))
-Write-Host "Configured PPSSPP debugger and plugins in $config"
+Write-Host "Depurador y plugins de PPSSPP configurados en $config"
