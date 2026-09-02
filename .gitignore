@@ -1,4 +1,6 @@
 /.venv/
+/.vscode/
+/.idea/
 /analysis/
 /build/
 /data/jp/
@@ -7,6 +9,7 @@
 /dist/
 /extracted/
 /external/
+
 # User-supplied disc images, downloaded patches, and generated derivatives.
 # Keep the directory instructions visible in fresh clones.
 /input/*
@@ -20,6 +23,7 @@
 /jp/
 /es/
 /logs/
+
 __pycache__/
 *.pyc
 *.o
@@ -29,5 +33,13 @@ __pycache__/
 *.cso
 *.chd
 *.rar
+*.zip
+*.7z
 *.xdelta
 *.xdelta3
+*.log
+*.dmp
+*.sav
+*.ppst
+Thumbs.db
+.DS_Store
