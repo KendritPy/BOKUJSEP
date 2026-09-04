@@ -1,11 +1,11 @@
-# Japanese source ISO
+# ISO japonesa de origen
 
-Place a legally obtained clean Japanese `UCJS10038` image here as:
+Coloca aquí una ISO japonesa limpia de `UCJS10038` con el nombre:
 
 ```text
 Boku_JP.iso
 ```
 
-Expected MD5: `B4D363D59CB87E25AB76AFC5384CCA31`.
+MD5 esperado: `B4D363D59CB87E25AB76AFC5384CCA31`.
 
-The setup process reads this file but never modifies it in place.
+El proceso de preparación lee este archivo, pero nunca lo modifica directamente.

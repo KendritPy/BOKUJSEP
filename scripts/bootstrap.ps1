@@ -1,4 +1,4 @@
-param([switch]$SkipDownloads)
+﻿param([switch]$SkipDownloads)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -10,7 +10,7 @@ function Ensure-Repo([string]$Url, [string]$Path, [string]$Ref = '', [switch]$Su
     if ($Ref) { $arguments += @('--branch', $Ref, '--single-branch') }
     $arguments += @($Url, $Path)
     & git @arguments
-    if ($LASTEXITCODE -ne 0) { throw "git clone failed: $Url" }
+    if ($LASTEXITCODE -ne 0) { throw "Falló git clone: $Url" }
 }
 
 function Ensure-RepoAtCommit([string]$Url, [string]$Path, [string]$Commit) {
@@ -20,14 +20,14 @@ function Ensure-RepoAtCommit([string]$Url, [string]$Path, [string]$Commit) {
     & git -C $Path remote add origin $Url
     & git -C $Path fetch --depth 1 origin $Commit
     & git -C $Path checkout --detach FETCH_HEAD
-    if ($LASTEXITCODE -ne 0) { throw "git checkout failed: $Url at $Commit" }
+    if ($LASTEXITCODE -ne 0) { throw "Falló git checkout: $Url en $Commit" }
 }
 
 function Warn-IfUnexpectedRevision([string]$Path, [string]$Expected) {
     $actual = (& git -C $Path rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0) { throw "cannot read repository revision: $Path" }
+    if ($LASTEXITCODE -ne 0) { throw "No se puede leer la revisión del repositorio: $Path" }
     if ($actual -ne $Expected) {
-        Write-Warning "$Path is at $actual; audited revision is $Expected. Existing checkouts are never overwritten."
+        Write-Warning "$Path está en $actual; la revisión auditada es $Expected. Los checkouts existentes nunca se sobrescriben."
     }
 }
 
@@ -36,13 +36,12 @@ $pleonexCommit = 'dae1215b13ca7dbc6fa17971ecd3d58de86b097a'
 $ppssppCommit = 'fa50bb1976065c4f8b1b47af227d367fe9771555'
 
 Ensure-Repo 'https://github.com/snake7594/boku-natsu-portable-kr-patch.git' (Join-Path $root 'external/boku-korean-tools') 'v0.1.3-image-kr'
-# The useful GriffithVIII table/font commits are public but no branch points to
-# them. Fetch the audited commit directly instead of silently cloning the 2015
-# default branch.
+# Los commits útiles de tabla/fuente de GriffithVIII son públicos, pero ninguna rama apunta a ellos.
+# Se obtiene directamente el commit auditado para no clonar silenciosamente la rama por defecto de 2015.
 Ensure-RepoAtCommit 'https://github.com/pleonex/Boku-no-Natsuyasumi.git' (Join-Path $root 'external/boku-pleonex') $pleonexCommit
 Ensure-Repo 'https://github.com/xan1242/PSPModBase.git' (Join-Path $root 'external/pspmodbase') -Submodules
 & git -C (Join-Path $root 'external/pspmodbase') submodule update --init --depth 1
-if ($LASTEXITCODE -ne 0) { throw 'PSPModBase PSPSDK submodule setup failed' }
+if ($LASTEXITCODE -ne 0) { throw 'Falló la preparación del submódulo PSPSDK de PSPModBase.' }
 
 if (-not (Test-Path -LiteralPath (Join-Path $root 'external/ppsspp-source/.git'))) {
     & git clone --depth 1 --filter=blob:none --sparse --branch v1.20.4 --single-branch 'https://github.com/hrydgard/ppsspp.git' (Join-Path $root 'external/ppsspp-source')
@@ -70,5 +69,5 @@ if (-not (Test-Path -LiteralPath (Join-Path $venv 'Scripts/python.exe'))) {
     & python -m venv $venv
 }
 & (Join-Path $venv 'Scripts/python.exe') -m pip install --disable-pip-version-check -r (Join-Path $root 'requirements.txt')
-if ($LASTEXITCODE -ne 0) { throw 'Python dependency installation failed' }
-Write-Host 'Bootstrap complete.' -ForegroundColor Green
+if ($LASTEXITCODE -ne 0) { throw 'Falló la instalación de dependencias de Python.' }
+Write-Host 'Preparación de dependencias completada.' -ForegroundColor Green
