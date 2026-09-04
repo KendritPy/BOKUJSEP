@@ -2,7 +2,7 @@
 
 BokuLangToggle is a PPSSPP plugin for **Boku no Natsuyasumi Portable** (`UCJS10038`) that switches gameplay dialogue between the original Japanese text and the TraduSquare/GriffithVIII Spanish v1.0 translation at runtime.
 
-Press **F7** while a gameplay dialogue box is visible to toggle languages. Japanese mode restores the paired original text, Japanese font atlas, and fixed-width layout; Spanish mode restores the translated text and proportional layout. Menus and cinematics remain Spanish.
+Press **F7** while a gameplay dialogue box is visible to toggle languages. Japanese mode restores the paired original text, Japanese font atlas, and fixed-width layout; Spanish mode restores the translated text and proportional layout. Menus and cinematics remain Spanish. Japanese mode stays selected across later scenes until you press the toggle again.
 
 The repository contains source code and reproducible build tooling only. It does **not** include game images, extracted game assets, Sony software, or the Spanish translation patch.
 
@@ -10,7 +10,7 @@ The repository contains source code and reproducible build tooling only. It does
 
 - Runtime Japanese/Spanish switching for mapped gameplay dialogue.
 - 8,539 structurally paired dialogue records.
-- Automatic Spanish fallback when a record cannot be resolved safely or has incompatible pagination.
+- Temporary Spanish rendering only for a record that cannot be resolved; Japanese mode remains selected and is retried on the next dialogue.
 - One-command setup of the audited PPSSPP 1.20.4 Windows x64 environment.
 - Savestates work when created with the same plugin build; rebuilds require a fresh savestate.
 
@@ -41,9 +41,9 @@ For troubleshooting and savestate rules, see [docs/USER_GUIDE.md](docs/USER_GUID
 
 The plugin runs on the Spanish v1.0 executable and keeps its renderer improvements. Offline tooling pairs Japanese and Spanish dialogue by structural identity and builds an immutable bilingual blob from the exact 16-bit word streams.
 
-At runtime the PRX intercepts the verified dialogue path. Spanish mode leaves the normal translated path unchanged. Japanese mode substitutes the paired original stream, swaps the original Japanese atlas into place, and restores the original fixed-width 16-pixel advance. Unknown or incompatible records fail closed to Spanish.
+At runtime the PRX intercepts the verified dialogue path. Spanish mode leaves the normal translated path unchanged. Japanese mode substitutes the paired original stream, swaps the original Japanese atlas into place, and restores the original fixed-width 16-pixel advance. Unknown or incompatible records stay fail-closed for that individual call while the selected Japanese mode remains active.
 
-The F7 bridge uses PPSSPP's debugger interface to expose an otherwise-unused PSP Note-button input to the guest plugin; no custom PPSSPP build is required.
+The F7 bridge uses PPSSPP's debugger interface to expose a configurable PSP input to the guest plugin; no custom PPSSPP build is required. Set `ToggleButton` in `plugin/BokuLangToggle.ini`, then map your physical joystick button to that same PSP control in PPSSPP's Control Mapping screen. The default is the otherwise-unused PSP Note button; PPSSPP's `L2`, `L3`, `R2`, and `R3` controls are also accepted for spare joystick buttons.
 
 Technical details are in [docs/architecture.md](docs/architecture.md), [docs/boku-dialogue-format.md](docs/boku-dialogue-format.md), and [docs/findings.md](docs/findings.md).
 

@@ -37,12 +37,12 @@ Restoring broader Japanese text-walker differences was tested and rejected becau
 
 A translated byte stream can correspond to more than one original Japanese record. The bilingual blob therefore stores structural/context information and marks ambiguous signatures rather than guessing.
 
-JP and ES records can also differ in page count. The runtime resolver maps compatible page ordinals explicitly; incompatible records remain or fall back to Spanish.
+JP and ES records can also differ in page count. The runtime resolver maps the live Spanish page to the same Japanese page ordinal when that ordinal exists; a missing ordinal is treated as an unresolved call without changing the user's selected language.
 
-These fail-closed rules are deliberate. A missing Japanese switch is preferable to drawing the wrong text or mixing Spanish text with the Japanese atlas.
+The per-call fail-closed rule is deliberate: a missing Japanese substitution is preferable to drawing the wrong text or mixing a Spanish stream with the Japanese atlas.
 
 ## PPSSPP integration
 
-PPSSPP's debugger interface is used only as a host input bridge: a host F7 press is translated to the PSP Note-button bit, which the PRX detects in guest input state. The mod therefore works with the audited stock PPSSPP build and does not require a custom emulator fork.
+PPSSPP's debugger interface is used only as a host input bridge: a host F7 press is translated to the configured PSP control bit, which the PRX detects in guest input state. The mod therefore works with the audited stock PPSSPP build and does not require a custom emulator fork.
 
 Savestates include plugin memory. They are safe only with the exact plugin build that created them; after rebuilding, boot normally and create a fresh savestate.

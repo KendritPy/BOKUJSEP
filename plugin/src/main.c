@@ -5,6 +5,11 @@
 #include <stdio.h>
 #include <string.h>
 
+#define BOKU_CTRL_L3 0x0002u
+#define BOKU_CTRL_R3 0x0004u
+#define BOKU_CTRL_L2 0x0400u
+#define BOKU_CTRL_R2 0x0800u
+
 #define MODULE_NAME "BokuLangToggle"
 #define LOG_PATH "ms0:/PSP/PLUGINS/BokuLangToggle/BokuLangToggle.log"
 #define CONFIG_PATH "ms0:/PSP/PLUGINS/BokuLangToggle/BokuLangToggle.ini"
@@ -20,6 +25,7 @@
 #define WIDTH_JP_WORD 0x24160010u
 #define ATLAS_SIZE 131200u
 #define FLAG_PAGE_COUNT_MISMATCH 2u
+#define PAGE_CAPACITY 16u
 
 typedef struct __attribute__((packed)) BlobHeader {
     char magic[4];
@@ -75,10 +81,121 @@ static unsigned char g_cached_prefix[8];
 static unsigned int g_cached_prefix_size = 0;
 static int g_hook_ready = 0;
 static int g_hook_installed = 0;
-static int g_width_japanese = 0;
-static volatile const unsigned char *g_last_stream = NULL;
+static unsigned int g_toggle_mask = PSP_CTRL_NOTE;
+static const char *g_toggle_button_name = "NOTE";
 
 static int SetJapaneseRenderState(int japanese);
+
+typedef struct ToggleButtonName {
+    const char *name;
+    unsigned int mask;
+} ToggleButtonName;
+
+static const ToggleButtonName g_toggle_buttons[] = {
+    { "SELECT", PSP_CTRL_SELECT },
+    { "START", PSP_CTRL_START },
+    { "UP", PSP_CTRL_UP },
+    { "RIGHT", PSP_CTRL_RIGHT },
+    { "DOWN", PSP_CTRL_DOWN },
+    { "LEFT", PSP_CTRL_LEFT },
+    { "LTRIGGER", PSP_CTRL_LTRIGGER },
+    { "L", PSP_CTRL_LTRIGGER },
+    { "RTRIGGER", PSP_CTRL_RTRIGGER },
+    { "R", PSP_CTRL_RTRIGGER },
+    { "L2", BOKU_CTRL_L2 },
+    { "L3", BOKU_CTRL_L3 },
+    { "R2", BOKU_CTRL_R2 },
+    { "R3", BOKU_CTRL_R3 },
+    { "TRIANGLE", PSP_CTRL_TRIANGLE },
+    { "CIRCLE", PSP_CTRL_CIRCLE },
+    { "CROSS", PSP_CTRL_CROSS },
+    { "SQUARE", PSP_CTRL_SQUARE },
+    { "HOME", PSP_CTRL_HOME },
+    { "HOLD", PSP_CTRL_HOLD },
+    { "NOTE", PSP_CTRL_NOTE },
+    { "SCREEN", PSP_CTRL_SCREEN },
+    { "VOLUP", PSP_CTRL_VOLUP },
+    { "VOL_UP", PSP_CTRL_VOLUP },
+    { "VOLDOWN", PSP_CTRL_VOLDOWN },
+    { "VOL_DOWN", PSP_CTRL_VOLDOWN },
+    { "WLAN_UP", PSP_CTRL_WLAN_UP },
+    { "WLAN", PSP_CTRL_WLAN_UP },
+    { "REMOTE", PSP_CTRL_REMOTE },
+    { "REMOTE_HOLD", PSP_CTRL_REMOTE },
+    { "DISC", PSP_CTRL_DISC },
+    { "MS", PSP_CTRL_MS },
+    { "MEMSTICK", PSP_CTRL_MS }
+};
+
+static int TextEquals(const char *left, const char *right)
+{
+    while (*left && *right) {
+        char a = *left++;
+        char b = *right++;
+        if (a >= 'a' && a <= 'z')
+            a = (char)(a - 'a' + 'A');
+        if (b >= 'a' && b <= 'z')
+            b = (char)(b - 'a' + 'A');
+        if (a != b)
+            return 0;
+    }
+    return *left == '\0' && *right == '\0';
+}
+
+static int ReadConfigValue(const char *data, const char *key, char *value, unsigned int capacity)
+{
+    const char *line = data;
+    unsigned int key_size = (unsigned int)strlen(key);
+    if (capacity == 0)
+        return 0;
+    while (line && *line) {
+        const char *end = strchr(line, '\n');
+        const char *cursor;
+        const char *value_end;
+        unsigned int length;
+        if (end == NULL)
+            end = line + strlen(line);
+        cursor = line;
+        while (cursor < end && (*cursor == ' ' || *cursor == '\t' || *cursor == '\r'))
+            ++cursor;
+        if ((unsigned int)(end - cursor) >= key_size &&
+            strncmp(cursor, key, key_size) == 0) {
+            cursor += key_size;
+            while (cursor < end && (*cursor == ' ' || *cursor == '\t'))
+                ++cursor;
+            if (cursor < end && *cursor == '=') {
+                ++cursor;
+                while (cursor < end && (*cursor == ' ' || *cursor == '\t'))
+                    ++cursor;
+                value_end = end;
+                while (value_end > cursor &&
+                       (value_end[-1] == ' ' || value_end[-1] == '\t' || value_end[-1] == '\r'))
+                    --value_end;
+                length = (unsigned int)(value_end - cursor);
+                if (length >= capacity)
+                    length = capacity - 1;
+                memcpy(value, cursor, length);
+                value[length] = '\0';
+                return 1;
+            }
+        }
+        line = *end ? end + 1 : NULL;
+    }
+    return 0;
+}
+
+static int ButtonMaskFromName(const char *name, unsigned int *mask, const char **canonical)
+{
+    unsigned int index;
+    for (index = 0; index < sizeof(g_toggle_buttons) / sizeof(g_toggle_buttons[0]); ++index) {
+        if (TextEquals(name, g_toggle_buttons[index].name)) {
+            *mask = g_toggle_buttons[index].mask;
+            *canonical = g_toggle_buttons[index].name;
+            return 1;
+        }
+    }
+    return 0;
+}
 
 static void LogLine(const char *text)
 {
@@ -214,9 +331,10 @@ static const unsigned char *ResolveJapanese(const unsigned char *live)
 {
     unsigned int index;
     const unsigned char *resolved = NULL;
-    if (live == NULL || live < (const unsigned char *)0x08000000 || live >= (const unsigned char *)0x0E000000)
+    if (g_header == NULL || live == NULL || live < (const unsigned char *)0x08000000 ||
+        live >= (const unsigned char *)0x0E000000)
         return NULL;
-    if (g_cached_es == live && g_cached_prefix_size != 0 &&
+    if (g_cached_es == live && g_cached_jp != NULL && g_cached_prefix_size != 0 &&
         memcmp(live, g_cached_prefix, g_cached_prefix_size) == 0)
         return g_cached_jp;
 
@@ -225,16 +343,17 @@ static const unsigned char *ResolveJapanese(const unsigned char *live)
         const unsigned char *es = g_payload + entry->es_offset;
         const unsigned char *jp = g_payload + entry->jp_offset;
         const unsigned char *context = g_payload + entry->context_offset;
-        unsigned int es_pages[16], jp_pages[16], es_count, jp_count, page;
-        if (entry->flags & FLAG_PAGE_COUNT_MISMATCH)
-            continue;
-        es_count = PageOffsets(es, entry->es_size, es_pages, 16);
-        jp_count = PageOffsets(jp, entry->jp_size, jp_pages, 16);
-        if (es_count != jp_count)
-            continue;
+        unsigned int es_pages[PAGE_CAPACITY], jp_pages[PAGE_CAPACITY], es_count, jp_count, page;
+        es_count = PageOffsets(es, entry->es_size, es_pages, PAGE_CAPACITY);
+        jp_count = PageOffsets(jp, entry->jp_size, jp_pages, PAGE_CAPACITY);
         for (page = 0; page < es_count; ++page) {
             const unsigned char *base;
             unsigned int suffix_size = entry->es_size - es_pages[page];
+            /* A translated stream can have a different number of page
+               controls. The live Spanish page still has an unambiguous
+               ordinal, so use that ordinal when the original has one. */
+            if (page >= jp_count)
+                continue;
             if (memcmp(live, es + es_pages[page], suffix_size) != 0)
                 continue;
             base = live - es_pages[page] - entry->es_text_offset;
@@ -265,17 +384,28 @@ static int DialogueWrapper(uintptr_t a0, uintptr_t a1, uintptr_t a2, uintptr_t a
     volatile uintptr_t *stream_field = (volatile uintptr_t *)(a1 + 0x54);
     uintptr_t original_stream = *stream_field;
     const unsigned char *replacement = NULL;
+    static uintptr_t logged_stream = 0;
+    static int logged_state = -1;
+    int render_state = 0;
     int result;
-    g_last_stream = (const unsigned char *)original_stream;
-    if (g_language == BOKU_LANG_JP && g_hook_ready) {
-        replacement = ResolveJapanese((const unsigned char *)original_stream);
-        if (replacement == NULL) {
-            if (SetJapaneseRenderState(0)) {
-                g_language = BOKU_LANG_ES;
-                LogLine("[BokuLang] unresolved/page-mismatch stream; automatically restored ES mode");
-            } else {
-                LogLine("[BokuLang] ERROR unresolved stream and ES render restore failed");
-            }
+    if (g_hook_ready && g_blob != NULL) {
+        if (g_language == BOKU_LANG_JP)
+            replacement = ResolveJapanese((const unsigned char *)original_stream);
+        /* Apply the renderer on the game thread, paired with this stream.
+           Keep fallback Spanish until the next call: GPU texture work may
+           happen after the walker returns. Never change the requested mode. */
+        render_state = replacement != NULL ? 1 : 0;
+        if (!SetJapaneseRenderState(replacement != NULL)) {
+            render_state = 2;
+            replacement = NULL;
+        }
+        if (logged_stream != original_stream || logged_state != render_state) {
+            LogValues("dialogue stream/requested language (0=JP,1=ES)",
+                (unsigned int)original_stream, g_language);
+            LogValues("dialogue render (0=ES,1=JP,2=font failure)/replacement",
+                render_state, (unsigned int)replacement);
+            logged_stream = original_stream;
+            logged_state = render_state;
         }
     }
     if (replacement != NULL)
@@ -305,8 +435,27 @@ static int SetJapaneseRenderState(int japanese)
 {
     volatile uint32_t *width = (volatile uint32_t *)WIDTH_LOAD_ADDRESS;
     uint32_t replacement = japanese ? WIDTH_JP_WORD : WIDTH_ES_WORD;
-    if (g_width_japanese == japanese)
-        return 1;
+    const unsigned char *wanted = japanese ? g_jp_atlas : g_es_atlas;
+    const unsigned char *other = japanese ? g_es_atlas : g_jp_atlas;
+    int needs_copy = 1;
+    int state_changed = 0;
+    /* PPSSPP can replace a compiled instruction with a 0x68xxxxxx JIT
+       marker. Invalidate its block before checking or patching the word. */
+    if (*width != WIDTH_ES_WORD && *width != WIDTH_JP_WORD)
+        sceKernelIcacheInvalidateRange((void *)WIDTH_LOAD_ADDRESS, 4);
+    if (*width != WIDTH_ES_WORD && *width != WIDTH_JP_WORD) {
+        LogValues("ERROR unrecognized width instruction", *width, 0);
+        return 0;
+    }
+    if (g_live_atlas != NULL) {
+        if (memcmp(g_live_atlas, wanted, ATLAS_SIZE) == 0) {
+            needs_copy = 0;
+        } else if (memcmp(g_live_atlas, other, ATLAS_SIZE) != 0) {
+            /* The game may have reloaded the font at another address during
+               a scene change. Discard the old address and search again. */
+            g_live_atlas = NULL;
+        }
+    }
     if (g_live_atlas == NULL) {
         LogLine("[BokuLang] scanning RAM for live Spanish atlas");
         g_live_atlas = FindLiveAtlas();
@@ -315,42 +464,53 @@ static int SetJapaneseRenderState(int japanese)
         LogLine("[BokuLang] ERROR live Spanish atlas not found");
         return 0;
     }
-    LogValues("live atlas", (unsigned int)g_live_atlas, japanese);
-    if (japanese) {
-        if (memcmp(g_live_atlas, g_es_atlas, ATLAS_SIZE) != 0)
+    if (needs_copy) {
+        LogValues("live atlas", (unsigned int)g_live_atlas, japanese);
+        if (memcmp(g_live_atlas, wanted, ATLAS_SIZE) == 0) {
+            needs_copy = 0;
+        } else if (memcmp(g_live_atlas, other, ATLAS_SIZE) != 0) {
             return 0;
-        memcpy(g_live_atlas, g_jp_atlas, ATLAS_SIZE);
-    } else {
-        if (memcmp(g_live_atlas, g_jp_atlas, ATLAS_SIZE) != 0)
-            return 0;
-        memcpy(g_live_atlas, g_es_atlas, ATLAS_SIZE);
+        }
+        if (needs_copy) {
+            memcpy(g_live_atlas, wanted, ATLAS_SIZE);
+            state_changed = 1;
+        }
     }
-    *width = replacement;
-    sceKernelDcacheWritebackAll();
-    sceKernelIcacheClearAll();
-    g_cached_es = NULL;
-    g_cached_jp = NULL;
-    g_width_japanese = japanese;
-    LogLine(japanese
-        ? "[BokuLang] Japanese atlas and fixed width active"
-        : "[BokuLang] Spanish atlas and proportional width restored");
+    if (*width != replacement) {
+        *width = replacement;
+        state_changed = 1;
+    }
+    if (state_changed) {
+        sceKernelDcacheWritebackAll();
+        sceKernelIcacheClearAll();
+    }
+    if (needs_copy)
+        LogLine(japanese
+            ? "[BokuLang] Japanese atlas and fixed width active"
+            : "[BokuLang] Spanish atlas and proportional width restored");
     return 1;
 }
 
 static int InstallDialogueHook(void)
 {
     volatile uint32_t *call = (volatile uint32_t *)DIALOGUE_CALL_ADDRESS;
-    uint32_t replacement;
-    LogValues("hook signatures call/width", *call, *(volatile uint32_t *)WIDTH_LOAD_ADDRESS);
+    uint32_t replacement, observed_call, observed_width;
+    sceKernelIcacheInvalidateRange((void *)DIALOGUE_CALL_ADDRESS, 4);
+    sceKernelIcacheInvalidateRange((void *)WIDTH_LOAD_ADDRESS, 4);
+    /* Capture once before any logging syscall can yield to the game and let
+       PPSSPP compile these instructions back into JIT markers. */
+    observed_call = *call;
+    observed_width = *(volatile uint32_t *)WIDTH_LOAD_ADDRESS;
     replacement = 0x0C000000u | ((((uintptr_t)&DialogueWrapper) >> 2) & 0x03FFFFFFu);
-    if (*call == replacement)
+    LogValues("hook observed call/width", observed_call, observed_width);
+    LogValues("hook expected original/installed", DIALOGUE_CALL_WORD, replacement);
+    if (observed_call == replacement)
     {
         g_hook_installed = 1;
         return 1;
     }
-    if (*call != DIALOGUE_CALL_WORD ||
-        (*(volatile uint32_t *)WIDTH_LOAD_ADDRESS != WIDTH_ES_WORD &&
-         *(volatile uint32_t *)WIDTH_LOAD_ADDRESS != WIDTH_JP_WORD))
+    if (observed_call != DIALOGUE_CALL_WORD ||
+        (observed_width != WIDTH_ES_WORD && observed_width != WIDTH_JP_WORD))
         return 0;
     *call = replacement;
     sceKernelDcacheWritebackAll();
@@ -373,19 +533,8 @@ void SetLanguage(enum BokuLanguage language)
         LogLine("[BokuLang] toggle ignored: dialogue hook is not ready");
         return;
     }
-    if (language == BOKU_LANG_JP && g_last_stream != NULL &&
-        ResolveJapanese((const unsigned char *)g_last_stream) == NULL) {
-        LogLine("[BokuLang] JP toggle refused: visible stream is unresolved or page-incompatible");
-        return;
-    }
-    if (language == BOKU_LANG_JP && !SetJapaneseRenderState(1)) {
-        LogLine("[BokuLang] ERROR Japanese render state unavailable; staying ES");
-        return;
-    }
-    if (language == BOKU_LANG_ES && !SetJapaneseRenderState(0)) {
-        LogLine("[BokuLang] ERROR Spanish render restore failed");
-        return;
-    }
+    /* Remember the request even between dialogue boxes, when no live font
+       may exist. The next walker call applies text and font together. */
     if (language == BOKU_LANG_JP)
         LogLine("[BokuLang] language ES -> JP");
     else
@@ -400,7 +549,10 @@ void ToggleLanguage(void)
 
 static void LoadConfiguration(void)
 {
-    char data[256];
+    char data[512];
+    char value[32];
+    unsigned int mask;
+    const char *canonical;
     int length;
     SceUID fd = sceIoOpen(CONFIG_PATH, PSP_O_RDONLY, 0);
     if (fd < 0)
@@ -410,10 +562,20 @@ static void LoadConfiguration(void)
     if (length <= 0)
         return;
     data[length] = '\0';
-    if (strstr(data, "DefaultLanguage=JP") != NULL)
-        g_language = BOKU_LANG_JP;
-    else if (strstr(data, "DefaultLanguage=ES") != NULL)
-        g_language = BOKU_LANG_ES;
+    if (ReadConfigValue(data, "DefaultLanguage", value, sizeof(value))) {
+        if (TextEquals(value, "JP"))
+            g_language = BOKU_LANG_JP;
+        else if (TextEquals(value, "ES"))
+            g_language = BOKU_LANG_ES;
+    }
+    if (ReadConfigValue(data, "ToggleButton", value, sizeof(value))) {
+        if (ButtonMaskFromName(value, &mask, &canonical)) {
+            g_toggle_mask = mask;
+            g_toggle_button_name = canonical;
+        } else {
+            LogLine("[BokuLang] invalid ToggleButton; using NOTE");
+        }
+    }
 }
 
 static int InputThread(SceSize args, void *argp)
@@ -424,17 +586,27 @@ static int InputThread(SceSize args, void *argp)
     (void)argp;
 
     /* Peek only. Do not change the game's controller sampling mode/cycle. */
+    if (g_language == BOKU_LANG_JP && g_hook_ready) {
+        g_hook_ready = 0;
+        if (LoadAssets())
+            g_hook_ready = 1;
+        else
+            LogLine("[BokuLang] ERROR initial JP assets unavailable; retry with toggle input");
+    }
     while (g_running) {
         unsigned int current;
         memset(&pad, 0, sizeof(pad));
         sceCtrlPeekBufferPositive(&pad, 1);
-        current = pad.Buttons & PSP_CTRL_NOTE;
+        current = pad.Buttons & g_toggle_mask;
         if (current && !previous) {
-            LogLine("[BokuLang] guest Note/F7 edge received");
+            char text[128];
+            snprintf(text, sizeof(text), "[BokuLang] guest %s toggle edge received", g_toggle_button_name);
+            LogLine(text);
+            g_hook_ready = 0;
             if (g_blob == NULL && !LoadAssets()) {
                 g_hook_ready = 0;
                 LogLine("[BokuLang] ERROR lazy runtime asset load failed");
-            } else if (!g_hook_installed && !InstallDialogueHook()) {
+            } else if (!InstallDialogueHook()) {
                 g_hook_ready = 0;
                 LogLine("[BokuLang] ERROR savestate hook recovery failed");
             } else {
@@ -456,7 +628,7 @@ int module_start(SceSize args, void *argp)
     (void)argp;
 
     g_running = 1;
-    LogLine("[BokuLang] Plugin loaded");
+    LogLine("[BokuLang] Plugin loaded: " __DATE__ " " __TIME__);
     LogLine("[BokuLang] Game UCJS10038 selected by plugin.ini");
     LoadConfiguration();
     LogLine(g_language == BOKU_LANG_JP
@@ -472,8 +644,7 @@ int module_start(SceSize args, void *argp)
         LogLine("[BokuLang] ERROR startup call hook installation failed");
     } else {
         g_hook_ready = 1;
-        g_language = BOKU_LANG_ES;
-        LogLine("[BokuLang] startup gate installed; assets and JP resolution are lazy on F7");
+        LogLine("[BokuLang] startup gate installed; assets and JP resolution are lazy on toggle input");
     }
 
     g_input_thread = sceKernelCreateThread(
@@ -491,7 +662,7 @@ int module_start(SceSize args, void *argp)
         return 0;
     }
 
-    LogLine("[BokuLang] input thread active; guest Note toggles language");
+    LogLine("[BokuLang] input thread active; configured guest button toggles language");
     return 0;
 }
 

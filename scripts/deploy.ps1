@@ -9,7 +9,12 @@ New-Item -ItemType Directory -Force -Path $target | Out-Null
 foreach ($name in @('BokuLangToggle.prx', 'plugin.ini', 'BokuLangToggle.ini', 'dialogue_blob.bin', 'jp_atlas0.pim', 'es_atlas0.pim')) {
     $destination = Join-Path $target $name
     if (Test-Path -LiteralPath $destination) { Copy-Item -Force -LiteralPath $destination -Destination "$destination.bak" }
-    Copy-Item -Force -LiteralPath (Join-Path $source $name) -Destination $destination
+    $sourceFile = if ($name -eq 'BokuLangToggle.ini') {
+        Join-Path $root 'plugin/BokuLangToggle.ini'
+    } else {
+        Join-Path $source $name
+    }
+    Copy-Item -Force -LiteralPath $sourceFile -Destination $destination
 }
 Write-Host "Deployed plugin to $target" -ForegroundColor Green
-Write-Host 'Toggle key: F7 (launch-dev starts the bridge automatically).'
+Write-Host 'Toggle key: F7 (launch.bat starts the bridge automatically; the guest button follows BokuLangToggle.ini).'

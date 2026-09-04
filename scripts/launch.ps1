@@ -37,6 +37,15 @@ foreach ($helper in $staleHotkeys) {
 & (Join-Path $PSScriptRoot 'deploy.ps1') -Memstick $memstick
 & (Join-Path $PSScriptRoot 'configure-ppsspp.ps1') -Memstick $memstick -DebuggerPort $DebuggerPort
 
+$ToggleButton = ''
+$pluginConfig = Join-Path $root 'plugin/BokuLangToggle.ini'
+if (Test-Path -LiteralPath $pluginConfig) {
+    $configured = Select-String -LiteralPath $pluginConfig -Pattern '^\s*ToggleButton\s*=\s*(\S+)' |
+        Select-Object -First 1
+    if ($configured) { $ToggleButton = $configured.Matches[0].Groups[1].Value }
+}
+if (-not $ToggleButton) { $ToggleButton = 'NOTE' }
+
 $ppssppArgs = [Collections.Generic.List[string]]::new()
 if ($Interpreter) { $ppssppArgs.Add('-i') }
 $ppssppArgs.Add("`"$Iso`"")
@@ -61,7 +70,8 @@ if (-not $ready) { throw "PPSSPP debugger did not open port $DebuggerPort within
 $pythonw = Join-Path $root '.venv/Scripts/pythonw.exe'
 if (-not (Test-Path -LiteralPath $pythonw)) { throw 'Python environment is missing. Run install.bat first.' }
 Start-Process -FilePath $pythonw `
-    -ArgumentList @("`"$debugClient`"", '--port', $DebuggerPort, 'hotkey', '--key', $Hotkey) `
+    -ArgumentList @("`"$debugClient`"", '--port', $DebuggerPort, 'hotkey', '--key', $Hotkey, '--button', $ToggleButton) `
     -WindowStyle Hidden
 
-Write-Host "Language toggle active on $Hotkey." -ForegroundColor Green
+Write-Host "Language toggle active on $Hotkey -> guest $ToggleButton." -ForegroundColor Green
+Write-Host "Hotkey diagnostics: $(Join-Path $root 'build/logs/hotkey.log')"

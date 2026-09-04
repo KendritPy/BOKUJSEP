@@ -77,6 +77,6 @@ The PIM2 pixel data is PSP-swizzled. The JP and ES atlases are extracted from th
 
 The offline builder pairs JP and ES records by structural identity and stores their exact raw streams in an immutable blob. It also records context needed to reject ambiguous ES signatures and page-count mismatches.
 
-At runtime the verified dialogue hook resolves the current ES record. Japanese mode substitutes the corresponding JP page ordinal, restores the JP atlas, and uses the original fixed 16-pixel advance. If the record is unresolved, ambiguous, or page-incompatible, the plugin stays in or falls back to Spanish.
+At runtime the verified dialogue hook resolves the current ES record. Japanese mode substitutes the corresponding JP page ordinal, restores the JP atlas, and uses the original fixed 16-pixel advance. If the record is unresolved, the current call is rendered with the matching ES atlas as a safe temporary fallback, while the selected Japanese mode remains active for the next dialogue.
 
-These rules deliberately prefer a missed toggle over corrupt text, wrong-record substitution, or mixed renderer state.
+These rules deliberately prefer a per-call missed substitution over corrupt text, wrong-record substitution, or mixed renderer state.

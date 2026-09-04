@@ -4,8 +4,10 @@ import base64
 import json
 import sys
 import unittest
+from argparse import ArgumentTypeError
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from types import SimpleNamespace
 
 from websocket import WebSocketTimeoutException
 
@@ -13,7 +15,7 @@ from websocket import WebSocketTimeoutException
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
-from ppsspp_debug import PPSSPPDebugger  # noqa: E402
+from ppsspp_debug import PPSSPPDebugger, guest_button, send_toggle, run_hotkey  # noqa: E402
 
 
 class FakeWebSocket:
@@ -58,6 +60,55 @@ def connected(messages: list[dict[str, object] | BaseException]) -> tuple[PPSSPP
 
 
 class PPSSPPDebuggerTests(unittest.TestCase):
+    def test_bridge_reconnect_does_not_repeat_held_toggle(self) -> None:
+        first = Mock(pending=[])
+        first.request.side_effect = RuntimeError("connection lost after input")
+        second = Mock(pending=[])
+        keys = Mock(side_effect=[0x8000, 0x8000, 0, 0x8000, KeyboardInterrupt])
+        fake_windows = SimpleNamespace(user32=SimpleNamespace(GetAsyncKeyState=keys))
+        with patch("ppsspp_debug.ctypes.windll", fake_windows, create=True), \
+             patch("ppsspp_debug.PPSSPPDebugger", side_effect=[first, second]), \
+             patch("ppsspp_debug.time.sleep"), self.assertLogs(level="INFO"):
+            with self.assertRaises(KeyboardInterrupt):
+                run_hotkey("127.0.0.1", 8765, "F7", "note")
+        first.request.assert_called_once_with(
+            "input.buttons.press", timeout=3.0, button="note", duration=3)
+        presses = [c for c in second.request.call_args_list
+                   if c.args[0] == "input.buttons.press"]
+        self.assertEqual(len(presses), 1)
+        first.close.assert_called_once()
+        second.close.assert_called_once()
+
+    def test_toggle_waits_for_acknowledgement_and_spans_guest_poll(self) -> None:
+        debugger, websocket = connected([
+            {"event": "input.buttons.press", "ticket": 3},
+        ])
+        self.assertEqual(send_toggle(debugger, "note")["event"], "input.buttons.press")
+        self.assertEqual(websocket.sent[-1], {
+            "event": "input.buttons.press", "ticket": 3,
+            "button": "note", "duration": 3,
+        })
+
+    def test_toggle_reports_rejection_without_replaying_press(self) -> None:
+        debugger, websocket = connected([
+            {"event": "error", "ticket": 3, "message": "game is not running"},
+        ])
+        with self.assertRaisesRegex(RuntimeError, "game is not running"):
+            send_toggle(debugger, "note")
+        self.assertEqual(len(websocket.sent), 3)
+
+    def test_guest_button_names_match_ppsspp_controls(self) -> None:
+        self.assertEqual(guest_button("NOTE"), "note")
+        self.assertEqual(guest_button("L_TRIGGER"), "ltrigger")
+        self.assertEqual(guest_button("VOL_UP"), "vol_up")
+        self.assertEqual(guest_button("L"), "ltrigger")
+        self.assertEqual(guest_button("R"), "rtrigger")
+        for button in ("L2", "L3", "R2", "R3"):
+            self.assertEqual(guest_button(button), button.lower())
+
+        with self.assertRaises(ArgumentTypeError):
+            guest_button("joystick-button-7")
+
     def test_identifies_and_enables_stepping_broadcasts(self) -> None:
         debugger, websocket = connected([])
 

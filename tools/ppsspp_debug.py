@@ -5,6 +5,8 @@ import argparse
 import base64
 import ctypes
 import json
+import logging
+from logging.handlers import RotatingFileHandler
 import sys
 import time
 from pathlib import Path
@@ -185,20 +187,97 @@ HOTKEYS = {
 }
 
 
-def run_hotkey(debugger: PPSSPPDebugger, key_name: str) -> None:
+# Names accepted by PPSSPP's input.buttons.press event. The plugin config uses
+# the corresponding PSP names (LTRIGGER/RTRIGGER rather than L/R), so this
+# mapping also keeps the host-side F7 bridge aligned with the guest setting.
+GUEST_BUTTONS = {
+    "l": "ltrigger",
+    "r": "rtrigger",
+    "select": "select",
+    "start": "start",
+    "up": "up",
+    "right": "right",
+    "down": "down",
+    "left": "left",
+    "ltrigger": "ltrigger",
+    "rtrigger": "rtrigger",
+    "l2": "l2",
+    "l3": "l3",
+    "r2": "r2",
+    "r3": "r3",
+    "triangle": "triangle",
+    "circle": "circle",
+    "cross": "cross",
+    "square": "square",
+    "home": "home",
+    "hold": "hold",
+    "note": "note",
+    "screen": "screen",
+    "volup": "vol_up",
+    "voldown": "vol_down",
+    "wlanup": "wlan",
+    "wlan": "wlan",
+    "remote": "remote_hold",
+    "remotehold": "remote_hold",
+    "disc": "disc",
+    "ms": "memstick",
+    "memstick": "memstick",
+}
+
+
+def guest_button(value: str) -> str:
+    normalized = value.strip().lower().replace("_", "")
+    if normalized not in GUEST_BUTTONS:
+        choices = ", ".join(sorted(GUEST_BUTTONS))
+        raise argparse.ArgumentTypeError(
+            f"unsupported guest button {value!r}; choose one of: {choices}"
+        )
+    return GUEST_BUTTONS[normalized]
+
+
+def send_toggle(debugger: PPSSPPDebugger, button_name: str) -> dict[str, Any]:
+    # Three frames cover the guest's 16 ms polling interval even when the
+    # host request arrives near a controller sampling boundary.
+    return debugger.request("input.buttons.press", timeout=3.0, button=button_name, duration=3)
+
+
+def run_hotkey(host: str, port: int, key_name: str, button_name: str) -> None:
     if not hasattr(ctypes, "windll"):
         raise SystemExit("the host hotkey helper currently targets Windows")
     get_key = ctypes.windll.user32.GetAsyncKeyState
     previous = False
     vk = HOTKEYS[key_name]
-    print(f"BokuLang hotkey active: {key_name} toggles language; Ctrl+C exits.")
-    while True:
-        current = bool(get_key(vk) & 0x8000)
-        if current and not previous:
-            debugger.fire("input.buttons.press", button="note", duration=1)
-            print(f"[{time.strftime('%H:%M:%S')}] toggle sent")
-        previous = current
-        time.sleep(1 / 120)
+    debugger = None
+    next_health_check = 0.0
+    logging.info("Bridge started: %s -> guest %s, %s:%s", key_name, button_name, host, port)
+    try:
+        while True:
+            current = bool(get_key(vk) & 0x8000)
+            pressed = current and not previous
+            previous = current
+            try:
+                if debugger is None:
+                    debugger = PPSSPPDebugger(host, port)
+                    logging.info("Debugger connected")
+                    next_health_check = 0.0
+                if pressed:
+                    logging.info("%s detected; sending guest %s", key_name, button_name)
+                    send_toggle(debugger, button_name)
+                    logging.info("PPSSPP acknowledged input (guest application is recorded in plugin log)")
+                if time.monotonic() >= next_health_check:
+                    debugger.request("game.status", timeout=3.0)
+                    debugger.pending.clear()
+                    next_health_check = time.monotonic() + 5.0
+            except Exception:
+                logging.exception("Debugger operation failed; reconnecting, without replaying input")
+                if debugger is not None:
+                    debugger.close()
+                    debugger = None
+                time.sleep(1)
+            time.sleep(1 / 120)
+    finally:
+        if debugger is not None:
+            debugger.close()
 
 
 def main() -> None:
@@ -229,7 +308,8 @@ def main() -> None:
     commands.add_parser("pause")
     commands.add_parser("resume")
     commands.add_parser("regs")
-    commands.add_parser("toggle")
+    toggle = commands.add_parser("toggle")
+    toggle.add_argument("--button", type=guest_button, default="note")
     press = commands.add_parser("press")
     press.add_argument("button")
     press.add_argument("--duration", type=int, default=1)
@@ -240,7 +320,26 @@ def main() -> None:
         "--key", choices=sorted(HOTKEYS), default="F7",
         help="unassigned PPSSPP keyboard key to use (default: F7)",
     )
+    hotkey.add_argument(
+        "--button", type=guest_button, default="note",
+        help="guest PSP control to press when the hotkey is detected (default: note)",
+    )
+    hotkey.add_argument("--log-file", type=Path,
+                        default=Path(__file__).resolve().parents[1] / "build/logs/hotkey.log")
     args = parser.parse_args()
+
+    if args.command == "hotkey":
+        args.log_file.parent.mkdir(parents=True, exist_ok=True)
+        logging.basicConfig(level=logging.INFO,
+                            format="%(asctime)s %(levelname)s %(message)s",
+                            handlers=[RotatingFileHandler(args.log_file, maxBytes=1000000,
+                                                         backupCount=2, encoding="utf-8")])
+        try:
+            run_hotkey(args.host, args.port, args.key, args.button)
+        except Exception:
+            logging.exception("Hotkey bridge stopped unexpectedly")
+            raise
+        return
 
     debugger = PPSSPPDebugger(args.host, args.port)
     try:
@@ -282,7 +381,7 @@ def main() -> None:
         elif args.command == "regs":
             output = debugger.request("cpu.getAllRegs")
         elif args.command == "toggle":
-            output = debugger.request("input.buttons.press", button="note", duration=1)
+            output = send_toggle(debugger, args.button)
         elif args.command == "press":
             output = debugger.request("input.buttons.press", button=args.button, duration=args.duration)
         elif args.command == "screenshot":
@@ -299,9 +398,6 @@ def main() -> None:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_bytes(base64.b64decode(response["uri"][len(prefix):]))
             output = {"output": str(args.output), "width": response.get("width"), "height": response.get("height")}
-        elif args.command == "hotkey":
-            run_hotkey(debugger, args.key)
-            return
         if hasattr(sys.stdout, "reconfigure"):
             sys.stdout.reconfigure(encoding="utf-8")
         print(json.dumps(output, ensure_ascii=False, indent=2))
